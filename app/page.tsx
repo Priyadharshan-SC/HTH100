@@ -7,6 +7,7 @@ import JarvisOrb, { JarvisState } from "@/components/JarvisOrb";
 import OmnitrixAlertOverlay, { AlertType } from "@/components/OmnitrixAlertOverlay";
 import AlertCentreFeed from "@/components/AlertCentreFeed";
 import VoiceMessageCentreFeed, { VoiceMessageItem } from "@/components/VoiceMessageCentreFeed";
+import JuryPosterShowcase from "@/components/JuryPosterShowcase";
 import { getSocket } from "@/lib/socket";
 import { getAudioContext } from "@/lib/soundFX";
 import { Radio, Volume2, Tv, Wifi, ShieldAlert, Sparkles } from "lucide-react";
@@ -16,6 +17,7 @@ export interface DisplayConfig {
   showSchedule: boolean;
   showAlertCentre: boolean;
   showLogo: boolean;
+  showJury?: boolean;
   customAnnouncement?: string;
 }
 
@@ -56,6 +58,7 @@ export default function EndScreen() {
     showSchedule: true,
     showAlertCentre: true,
     showLogo: true,
+    showJury: true,
     customAnnouncement: "",
   });
 
@@ -694,81 +697,98 @@ export default function EndScreen() {
       </AnimatePresence>
 
       {/* =========================================================================
-          3. CENTER REGION: COUNTDOWN & TRACK DETAILS
-          Visually dominant, scalable from 1080p to 4K
+          3. CENTER REGION: COUNTDOWN, TELEMETRY & RIGHT-SIDE VERTICAL JURY SHOWCASE
+          Visually dominant, scalable from 1080p to 4K without overlapping
           ========================================================================= */}
-      <div className="flex-1 w-full max-w-6xl mx-auto flex flex-col items-center justify-center gap-6 my-4 z-10">
-        {/* Live Admin Announcement Ticker (If Configured) */}
-        {displayConfig.customAnnouncement && displayConfig.customAnnouncement.trim() && (
-          <div className="w-full max-w-4xl px-4 py-2 rounded-xl bg-neon-cyan/10 border border-neon-cyan/40 text-neon-cyan font-mono text-xs text-center uppercase tracking-wider animate-pulse">
-            📢 {displayConfig.customAnnouncement}
-          </div>
-        )}
-
-        {/* Timeline Event Details Badge Above Timer (With comfortable padding) */}
-        {activeMilestone ? (
-          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 px-6 py-2.5 rounded-full bg-black/70 border border-neon-cyan/40 backdrop-blur-xl shadow-[0_0_25px_rgba(0,243,255,0.25)] text-xs md:text-sm font-mono tracking-wider animate-pulse mb-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-neon-green animate-pulse shadow-[0_0_8px_#39ff14]" />
-            <span className="text-gray-400 uppercase text-[10px] font-bold">TIMELINE PHASE:</span>
-            <span className="text-neon-cyan font-black uppercase tracking-wide">
-              {activeMilestone.title}
-            </span>
-            <span className="text-gray-500 hidden sm:inline">•</span>
-            <span className="text-gray-300 font-bold">
-              {new Date(activeMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(activeMilestone.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            {nextMilestone && (
-              <>
-                <span className="text-gray-600 hidden md:inline">//</span>
-                <span className="text-gray-400 hidden md:inline text-[11px]">
-                  NEXT: <span className="text-white font-bold">{nextMilestone.title}</span> ({new Date(nextMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
-                </span>
-              </>
-            )}
-          </div>
-        ) : nextMilestone ? (
-          <div className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-black/70 border border-white/10 backdrop-blur-xl text-xs md:text-sm font-mono tracking-wider mb-2">
-            <span className="w-2 h-2 rounded-full bg-neon-cyan animate-ping" />
-            <span className="text-gray-400 uppercase text-[10px]">NEXT EVENT:</span>
-            <span className="text-white font-bold uppercase">{nextMilestone.title}</span>
-            <span className="text-neon-cyan">
-              at {new Date(nextMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          </div>
-        ) : null}
-
-        {/* Visually Dominant Event Countdown (Controlled by Admin Toggles) */}
-        {displayConfig.showCountdown ? (
-          <EventCountdown
-            initialCurrentEvent={currentEvent}
-            initialNextEvent={nextEvent}
-            initialServerTime={serverTime}
-          />
-        ) : (
-          <div className="py-12 px-8 rounded-3xl bg-black/60 border border-white/10 text-center font-mono max-w-2xl">
-            <h2 className="text-3xl font-black text-white uppercase tracking-wider mb-2">
-              {currentEvent ? currentEvent.title : "HACK THE HORIZON 2.0"}
-            </h2>
-            <p className="text-sm text-gray-400">
-              {currentEvent?.description || "Standby for incoming schedule update"}
-            </p>
-          </div>
-        )}
-
-        {/* Dual Command Feed: Persistent Alert Centre & Voice Message Centre (with Replay) */}
-        <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-start justify-center">
-          {displayConfig.showAlertCentre ? (
-            <AlertCentreFeed alerts={recentAlerts} />
-          ) : (
-            <div className="hidden md:block" />
+      <div className="flex-1 w-full max-w-[1720px] mx-auto flex items-center justify-center gap-6 xl:gap-8 my-3 z-10 px-2 sm:px-4">
+        {/* Main Center Column (Countdown, Milestones, Dual Feeds) */}
+        <div className="flex-1 max-w-5xl flex flex-col items-center justify-center gap-6 w-full">
+          {/* Live Admin Announcement Ticker (If Configured) */}
+          {displayConfig.customAnnouncement && displayConfig.customAnnouncement.trim() && (
+            <div className="w-full max-w-4xl px-4 py-2 rounded-xl bg-neon-cyan/10 border border-neon-cyan/40 text-neon-cyan font-mono text-xs text-center uppercase tracking-wider animate-pulse">
+              📢 {displayConfig.customAnnouncement}
+            </div>
           )}
-          <VoiceMessageCentreFeed
-            voiceNotes={recentVoiceNotes}
-            activePlayingId={replayPlayingId}
-            onPlayNote={handleReplayVoiceNote}
-            onStopNote={handleStopVoiceNote}
-          />
+
+          {/* Timeline Event Details Badge Above Timer (With comfortable padding) */}
+          {activeMilestone ? (
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 px-6 py-2.5 rounded-full bg-black/70 border border-neon-cyan/40 backdrop-blur-xl shadow-[0_0_25px_rgba(0,243,255,0.25)] text-xs md:text-sm font-mono tracking-wider animate-pulse mb-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-neon-green animate-pulse shadow-[0_0_8px_#39ff14]" />
+              <span className="text-gray-400 uppercase text-[10px] font-bold">TIMELINE PHASE:</span>
+              <span className="text-neon-cyan font-black uppercase tracking-wide">
+                {activeMilestone.title}
+              </span>
+              <span className="text-gray-500 hidden sm:inline">•</span>
+              <span className="text-gray-300 font-bold">
+                {new Date(activeMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(activeMilestone.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              {nextMilestone && (
+                <>
+                  <span className="text-gray-600 hidden md:inline">//</span>
+                  <span className="text-gray-400 hidden md:inline text-[11px]">
+                    NEXT: <span className="text-white font-bold">{nextMilestone.title}</span> ({new Date(nextMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                  </span>
+                </>
+              )}
+            </div>
+          ) : nextMilestone ? (
+            <div className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-black/70 border border-white/10 backdrop-blur-xl text-xs md:text-sm font-mono tracking-wider mb-2">
+              <span className="w-2 h-2 rounded-full bg-neon-cyan animate-ping" />
+              <span className="text-gray-400 uppercase text-[10px]">NEXT EVENT:</span>
+              <span className="text-white font-bold uppercase">{nextMilestone.title}</span>
+              <span className="text-neon-cyan">
+                at {new Date(nextMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+          ) : null}
+
+          {/* Visually Dominant Event Countdown (Controlled by Admin Toggles) */}
+          {displayConfig.showCountdown ? (
+            <EventCountdown
+              initialCurrentEvent={currentEvent}
+              initialNextEvent={nextEvent}
+              initialServerTime={serverTime}
+            />
+          ) : (
+            <div className="py-12 px-8 rounded-3xl bg-black/60 border border-white/10 text-center font-mono max-w-2xl">
+              <h2 className="text-3xl font-black text-white uppercase tracking-wider mb-2">
+                {currentEvent ? currentEvent.title : "HACK THE HORIZON 2.0"}
+              </h2>
+              <p className="text-sm text-gray-400">
+                {currentEvent?.description || "Standby for incoming schedule update"}
+              </p>
+            </div>
+          )}
+
+          {/* Dual Command Feed: Persistent Alert Centre & Voice Message Centre (with Replay) */}
+          <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-start justify-center">
+            {displayConfig.showAlertCentre ? (
+              <AlertCentreFeed alerts={recentAlerts} />
+            ) : (
+              <div className="hidden md:block" />
+            )}
+            <VoiceMessageCentreFeed
+              voiceNotes={recentVoiceNotes}
+              activePlayingId={replayPlayingId}
+              onPlayNote={handleReplayVoiceNote}
+              onStopNote={handleStopVoiceNote}
+            />
+          </div>
+
+          {/* Mobile / Tablet Viewport (< xl): Gracefully rendered below feeds */}
+          {displayConfig.showJury !== false && (
+            <div className="xl:hidden w-full max-w-xs mx-auto mt-2">
+              <JuryPosterShowcase />
+            </div>
+          )}
         </div>
+
+        {/* Right Side: Vertical Jury Poster Showcase (Docked cleanly on right side for 1080p, 4K & Smart Boards) */}
+        {displayConfig.showJury !== false && (
+          <div className="hidden xl:flex flex-col items-center justify-center shrink-0 w-64 2xl:w-72">
+            <JuryPosterShowcase />
+          </div>
+        )}
       </div>
 
       {/* =========================================================================
