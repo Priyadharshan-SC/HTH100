@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const activeSession = await prisma.voiceSession.findFirst({
+    const db = prisma as any;
+    const activeSession = await db.voiceSession.findFirst({
       where: {
         status: { in: ['ACTIVE', 'MUTED'] },
       },

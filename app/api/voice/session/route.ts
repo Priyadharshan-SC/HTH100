@@ -10,9 +10,11 @@ export async function POST(req: Request) {
 
     const io = (global as any).io;
 
+    const db = prisma as any;
+
     if (action === 'start') {
       // Check if an existing session is already active by another admin (within last 30 minutes)
-      const existing = await prisma.voiceSession.findFirst({
+      const existing = await db.voiceSession.findFirst({
         where: {
           status: { in: ['ACTIVE', 'MUTED'] },
           startedAt: { gte: new Date(Date.now() - 30 * 60 * 1000) },
@@ -31,13 +33,13 @@ export async function POST(req: Request) {
       const activeSessionId = sessionId || `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
       // Clear any prior active sessions
-      await prisma.voiceSession.updateMany({
+      await db.voiceSession.updateMany({
         where: { status: { in: ['ACTIVE', 'MUTED'] } },
         data: { status: 'ENDED', endedAt: new Date() },
       });
 
       // Create new active session in Neon PostgreSQL
-      const session = await prisma.voiceSession.create({
+      const session = await db.voiceSession.create({
         data: {
           sessionId: activeSessionId,
           adminId,
@@ -58,7 +60,7 @@ export async function POST(req: Request) {
     }
 
     if (action === 'end') {
-      await prisma.voiceSession.updateMany({
+      await db.voiceSession.updateMany({
         where: { status: { in: ['ACTIVE', 'MUTED'] } },
         data: { status: 'ENDED', endedAt: new Date() },
       });
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
 
     if (action === 'mute') {
       const nextStatus = isMuted ? 'MUTED' : 'ACTIVE';
-      await prisma.voiceSession.updateMany({
+      await db.voiceSession.updateMany({
         where: { status: { in: ['ACTIVE', 'MUTED'] } },
         data: { status: nextStatus },
       });
