@@ -15,11 +15,11 @@ export default function AdminVoicePage() {
             <div className="flex items-center gap-3">
               <Radio className="w-6 h-6 text-neon-green" />
               <h1 className="text-2xl font-black tracking-widest uppercase text-white">
-                CENTRAL VOICE BROADCAST
+                CENTRAL VOICE NOTE DISPATCH
               </h1>
             </div>
             <p className="text-xs text-gray-400 font-mono mt-1">
-              Real-time low-latency audio transmission to 20+ Smart Board End Screens
+              Record voice announcements with instant preview and broadcast directly to Smart Board End Screens
             </p>
           </div>
         </div>
@@ -28,7 +28,7 @@ export default function AdminVoicePage() {
         <div className="mb-8 p-4 rounded-2xl bg-white/[0.02] border border-white/10 flex items-start gap-3">
           <Info className="w-5 h-5 text-neon-cyan flex-shrink-0 mt-0.5" />
           <div className="text-xs text-gray-300 leading-relaxed font-sans">
-            <strong>Architecture Protocol:</strong> Central Voice broadcasts a low-latency WebRTC mono speech audio stream directly to all listening Smart Boards. Only one organizer laptop owns the active voice channel at a time.
+            <strong>Voice Dispatch Protocol:</strong> Record an announcement through your microphone, preview the audio, pick your target venue(s) or broadcast to all 13 venues, and dispatch. The audio instantly transmits to End Screens and triggers the Jarvis overlay.
           </div>
         </div>
 

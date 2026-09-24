@@ -76,3 +76,14 @@ model VoiceSession {
   updatedAt     DateTime  @default(now()) @updatedAt
 }
 
+model VoiceNote {
+  id           String   @id @default(uuid())
+  title        String?  @default("Central Voice Note")
+  audioData    String   @db.Text
+  mimeType     String   @default("audio/webm")
+  duration     Float?   @default(0)
+  targetVenues String   @default("ALL")
+  adminName    String?  @default("Admin")
+  createdAt    DateTime @default(now())
+}
+

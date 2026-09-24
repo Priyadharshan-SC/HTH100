@@ -278,6 +278,22 @@ app.prepare().then(() => {
       }
     });
 
+    // 8. Voice Note Broadcast (Pre-recorded Voice Announcements)
+    socket.on("voice-note-broadcast", async (data, callback) => {
+      try {
+        io.emit("VOICE_NOTE_BROADCAST", data);
+        io.emit("voice-note-broadcast", data);
+        if (typeof callback === "function") {
+          callback({ success: true });
+        }
+      } catch (err) {
+        console.error("Error broadcasting voice note via socket:", err);
+        if (typeof callback === "function") {
+          callback({ success: false, error: err.message });
+        }
+      }
+    });
+
     socket.on("disconnect", () => {
       // If active voice admin disconnects, terminate broadcast safely
       if (voiceSession.active && voiceSession.adminSocketId === socket.id) {

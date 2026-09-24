@@ -6,7 +6,6 @@ import EventCountdown, { EventType } from "@/components/EventCountdown";
 import JarvisOrb, { JarvisState } from "@/components/JarvisOrb";
 import OmnitrixAlertOverlay, { AlertType } from "@/components/OmnitrixAlertOverlay";
 import AlertCentreFeed from "@/components/AlertCentreFeed";
-import { SmartBoardVoiceReceiver, VoiceStats } from "@/lib/voiceClient";
 import { getSocket } from "@/lib/socket";
 import { getAudioContext } from "@/lib/soundFX";
 import { Radio, Volume2, Tv, Wifi, ShieldAlert, Sparkles } from "lucide-react";
@@ -19,10 +18,17 @@ export interface DisplayConfig {
   customAnnouncement?: string;
 }
 
+interface ActiveVoiceNote {
+  id: string;
+  title: string;
+  adminName: string;
+  targetVenues: string;
+  audioData: string;
+}
+
 export default function EndScreen() {
   const [voiceState, setVoiceState] = useState<JarvisState>("STANDBY");
-  const [remoteAudioStream, setRemoteAudioStream] = useState<MediaStream | null>(null);
-  const [voiceStats, setVoiceStats] = useState<VoiceStats | null>(null);
+  const [activeVoiceNote, setActiveVoiceNote] = useState<ActiveVoiceNote | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<AlertType[]>([]);
   const [audioUnlocked, setAudioUnlocked] = useState<boolean>(false);
   const [connectionStatus, setConnectionStatus] = useState<"CONNECTED" | "RECONNECTING" | "OFFLINE">("CONNECTED");
@@ -49,7 +55,7 @@ export default function EndScreen() {
   });
 
   const audioElRef = useRef<HTMLAudioElement | null>(null);
-  const voiceReceiverRef = useRef<SmartBoardVoiceReceiver | null>(null);
+  const playedVoiceNotesRef = useRef<Set<string>>(new Set());
   const seenAlertIds = useRef<Set<string>>(new Set());
   const initialLoadedRef = useRef<boolean>(false);
 
@@ -73,6 +79,43 @@ export default function EndScreen() {
       localStorage.setItem("hth_display_id", finalDisplay);
     }
   }, []);
+
+  // Play incoming voice note with auto-cleanup and visualizer activation
+  const playVoiceNote = (note: any) => {
+    if (!note || !note.id || !note.audioData) return;
+    if (playedVoiceNotesRef.current.has(note.id)) return;
+
+    // Check venue targeting
+    const target = note.targetVenues || "ALL";
+    const isTargeted =
+      target === "ALL" || target.includes("ALL") || target.includes(venueCode);
+    if (!isTargeted) return;
+
+    playedVoiceNotesRef.current.add(note.id);
+    setActiveVoiceNote(note);
+    setVoiceState("SPEAKING");
+
+    if (audioElRef.current) {
+      audioElRef.current.src = note.audioData;
+      audioElRef.current.currentTime = 0;
+      audioElRef.current
+        .play()
+        .then(() => {
+          setAudioUnlocked(true);
+        })
+        .catch((err) => {
+          console.warn("Autoplay audio blocked by browser:", err);
+          setAudioUnlocked(false);
+        });
+
+      audioElRef.current.onended = () => {
+        setTimeout(() => {
+          setActiveVoiceNote(null);
+          setVoiceState("STANDBY");
+        }, 1200);
+      };
+    }
+  };
 
   // Resilient HTTP Polling & Database Synchronization (Fail-Safe for Vercel Serverless)
   useEffect(() => {
@@ -180,6 +223,15 @@ export default function EndScreen() {
                 }
               }
             });
+          })
+          .catch(() => {});
+
+        // 6. Sync Latest Voice Note (HTTP Fallback for Vercel)
+        fetch("/api/voice/broadcast?latest=true")
+          .then((res) => res.json())
+          .then((data) => {
+            if (!isMounted || !data?.latest) return;
+            playVoiceNote(data.latest);
           })
           .catch(() => {});
       } catch (err) {
@@ -305,28 +357,17 @@ export default function EndScreen() {
     socket.on("ALERT_DELETED", handleAlertDeleted);
     socket.on("ALERT_ARCHIVED", handleAlertDeleted);
 
-    // 6. Initialize WebRTC Voice Receiver
-    const receiver = new SmartBoardVoiceReceiver({
-      audioElement: audioElRef.current,
-      onTrack: (stream) => {
-        setRemoteAudioStream(stream);
-      },
-      onStateChange: (state) => {
-        setVoiceState(state);
-      },
-      onStats: (stats) => {
-        setVoiceStats(stats);
-      },
-      onPlaybackBlocked: () => {
-        setAudioUnlocked(false);
-      },
-    });
+    // 6. Voice Note Broadcast Listener
+    const handleVoiceNote = (note: any) => {
+      playVoiceNote(note);
+    };
 
-    voiceReceiverRef.current = receiver;
-    receiver.init(venueCode, displayId);
+    socket.on("VOICE_NOTE_BROADCAST", handleVoiceNote);
+    socket.on("voice-note-broadcast", handleVoiceNote);
 
     return () => {
-      receiver.destroy();
+      socket.off("VOICE_NOTE_BROADCAST", handleVoiceNote);
+      socket.off("voice-note-broadcast", handleVoiceNote);
       socket.off("SERVER_STATE_SYNC", handleStateSync);
       socket.off("connect", registerWithBackend);
       socket.off("disconnect");
@@ -413,13 +454,13 @@ export default function EndScreen() {
       />
 
       {/* Prominent floating un-mute banner if audio policy blocks autoplay during voice announcement */}
-      {isCentralVoiceActive && !audioUnlocked && (
+      {activeVoiceNote && !audioUnlocked && (
         <div
           onClick={unlockAudio}
           className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full bg-red-600 text-white font-mono font-black text-xs sm:text-sm tracking-wider uppercase shadow-[0_0_40px_rgba(239,68,68,0.9)] cursor-pointer animate-bounce flex items-center gap-3 border-2 border-white hover:bg-red-500 transition-all"
         >
           <Volume2 className="w-5 h-5 animate-pulse" />
-          <span>🔊 LIVE VOICE BROADCAST IN PROGRESS — CLICK ANYWHERE TO HEAR</span>
+          <span>🔊 VOICE ANNOUNCEMENT RECEIVED — CLICK ANYWHERE TO PLAY AUDIO</span>
         </div>
       )}
 
@@ -490,10 +531,10 @@ export default function EndScreen() {
             </div>
 
             {/* Voice Active Badge */}
-            {isCentralVoiceActive && (
-              <span className="font-mono text-[10px] text-red-400 font-bold border-l border-white/20 pl-2.5 animate-pulse flex items-center gap-1">
-                <Radio className="w-3.5 h-3.5 text-red-500" />
-                <span className="hidden sm:inline">VOICE LIVE</span>
+            {activeVoiceNote && (
+              <span className="font-mono text-[10px] text-neon-green font-bold border-l border-white/20 pl-2.5 animate-pulse flex items-center gap-1">
+                <Radio className="w-3.5 h-3.5 text-neon-green" />
+                <span className="hidden sm:inline">VOICE NOTE PLAYING</span>
               </span>
             )}
           </div>
@@ -502,10 +543,10 @@ export default function EndScreen() {
 
       {/* =========================================================================
           2. CENTRAL VOICE (JARVIS) DYNAMIC MODAL / OVERLAY
-          Smoothly appears ONLY when admin starts Central Voice
+          Smoothly appears when a Voice Note is active
           ========================================================================= */}
       <AnimatePresence>
-        {isCentralVoiceActive && (
+        {activeVoiceNote && (
           <motion.div
             initial={{ opacity: 0, scale: 0.85, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -516,27 +557,30 @@ export default function EndScreen() {
             <div className="flex flex-col items-center justify-center p-10 md:p-16 rounded-3xl bg-black/90 border-2 border-neon-green/60 shadow-[0_0_80px_rgba(57,255,20,0.4)] max-w-2xl w-full text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-neon-green via-neon-cyan to-neon-green" />
 
-              <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/20 border border-red-500 text-red-400 font-mono font-bold text-xs uppercase mb-8 animate-pulse">
+              <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-neon-green/20 border border-neon-green text-neon-green font-mono font-bold text-xs uppercase mb-8 animate-pulse">
                 <Volume2 className="w-4 h-4" />
-                <span>CENTRAL VOICE BROADCAST // ALL 13 VENUES</span>
+                <span>
+                  VOICE ANNOUNCEMENT //{" "}
+                  {activeVoiceNote.targetVenues === "ALL"
+                    ? "ALL 13 VENUES"
+                    : activeVoiceNote.targetVenues}
+                </span>
               </div>
 
               {/* JARVIS Amplitude Reactive Orb */}
               <JarvisOrb
-                state={voiceState}
-                audioStream={remoteAudioStream}
+                state="SPEAKING"
                 size="xl"
-                labelOverride={
-                  voiceState === "SPEAKING"
-                    ? "CENTRAL VOICE ACTIVE"
-                    : voiceState === "CONNECTED"
-                    ? "VOICE MUTED"
-                    : "CONNECTING..."
-                }
+                labelOverride="VOICE ANNOUNCEMENT"
               />
 
-              <div className="mt-8 text-sm font-mono text-gray-300">
-                Please listen to the central announcement from the command centre.
+              <div className="mt-8 flex flex-col items-center gap-2">
+                <h3 className="text-xl font-black text-white uppercase tracking-wider font-mono">
+                  {activeVoiceNote.title || "ANNOUNCEMENT FROM CONTROL CENTRE"}
+                </h3>
+                <p className="text-xs font-mono text-gray-400">
+                  Broadcast by {activeVoiceNote.adminName || "Organizer"}
+                </p>
               </div>
             </div>
           </motion.div>

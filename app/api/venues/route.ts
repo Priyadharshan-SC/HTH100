@@ -10,7 +10,7 @@ export async function GET() {
     });
 
     const now = Date.now();
-    const evaluatedVenues = venues.map((v) => {
+    const evaluatedVenues = venues.map((v: any) => {
       const lastUpdated = v.updatedAt ? new Date(v.updatedAt).getTime() : 0;
       const isRecent = (now - lastUpdated) < 45000;
       return {
