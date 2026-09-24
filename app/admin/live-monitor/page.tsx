@@ -49,16 +49,22 @@ export default function AdminLiveMonitorPage() {
   const [search, setSearch] = useState<string>("");
   const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString());
 
-  // Fetch initial venues from API
+  // Fetch initial venues and poll for live status
   useEffect(() => {
-    fetch("/api/venues")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.venues) {
-          setVenues(data.venues);
-        }
-      })
-      .catch((err) => console.error("Error fetching venues:", err));
+    const fetchVenues = () => {
+      fetch("/api/venues")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.venues) {
+            setVenues(data.venues);
+            setLastSyncTime(new Date().toLocaleTimeString());
+          }
+        })
+        .catch((err) => console.error("Error fetching venues:", err));
+    };
+
+    fetchVenues();
+    const interval = setInterval(fetchVenues, 4000);
 
     const socket = getSocket();
 

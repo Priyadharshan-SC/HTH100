@@ -50,6 +50,8 @@ export default function EndScreen() {
 
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const voiceReceiverRef = useRef<SmartBoardVoiceReceiver | null>(null);
+  const seenAlertIds = useRef<Set<string>>(new Set());
+  const initialLoadedRef = useRef<boolean>(false);
 
   // Read Venue and Display identity on initial load
   useEffect(() => {
@@ -71,6 +73,124 @@ export default function EndScreen() {
       localStorage.setItem("hth_display_id", finalDisplay);
     }
   }, []);
+
+  // Resilient HTTP Polling & Database Synchronization (Fail-Safe for Vercel Serverless)
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncFromDatabase = async () => {
+      try {
+        // 1. Sync Display Configuration
+        fetch("/api/display-config")
+          .then((res) => res.json())
+          .then((data) => {
+            if (!isMounted) return;
+            if (data?.config) {
+              setDisplayConfig((prev) => {
+                if (JSON.stringify(prev) !== JSON.stringify(data.config)) {
+                  return data.config;
+                }
+                return prev;
+              });
+            }
+          })
+          .catch(() => {});
+
+        // 2. Sync Event Schedule & Server Time
+        fetch("/api/events/current")
+          .then((res) => res.json())
+          .then((data) => {
+            if (!isMounted) return;
+            if (data?.currentEvent !== undefined) setCurrentEvent(data.currentEvent);
+            if (data?.nextEvent !== undefined) setNextEvent(data.nextEvent);
+            if (data?.serverTime) setServerTime(data.serverTime);
+          })
+          .catch(() => {});
+
+        // 3. Sync Venues
+        fetch("/api/venues")
+          .then((res) => res.json())
+          .then((data) => {
+            if (!isMounted) return;
+            if (data?.venues && Array.isArray(data.venues)) {
+              const currentVenue = data.venues.find((v: any) => v.venueCode === venueCode);
+              if (currentVenue) {
+                if (currentVenue.venueName) setVenueName(currentVenue.venueName);
+                if (currentVenue.trackName) setTrackName(currentVenue.trackName);
+              }
+            }
+          })
+          .catch(() => {});
+
+        // 4. Send Venue Heartbeat Ping
+        fetch("/api/venues", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ venueCode, displayId, status: "ONLINE" }),
+        })
+          .then(() => {
+            if (isMounted) setConnectionStatus("CONNECTED");
+          })
+          .catch(() => {});
+
+        // 5. Sync Alerts & Trigger New Alerts
+        fetch("/api/alerts")
+          .then((res) => res.json())
+          .then((data) => {
+            if (!isMounted || !data?.alerts || !Array.isArray(data.alerts)) return;
+
+            const allAlerts: AlertType[] = data.alerts;
+            setRecentAlerts(allAlerts.slice(0, 10));
+
+            // On very first load, seed seenAlertIds so historical alerts don't blast on startup
+            if (!initialLoadedRef.current) {
+              allAlerts.forEach((a) => seenAlertIds.current.add(a.id));
+              initialLoadedRef.current = true;
+              return;
+            }
+
+            // On subsequent polls, check for new alerts targeted to this venue
+            allAlerts.forEach((alert: any) => {
+              if (!seenAlertIds.current.has(alert.id)) {
+                seenAlertIds.current.add(alert.id);
+
+                // Check venue targeting
+                const isTargeted =
+                  !alert.targetType ||
+                  alert.targetType === "ALL" ||
+                  (alert.targetType === "VENUE" &&
+                    alert.targetVenues &&
+                    alert.targetVenues.includes(venueCode)) ||
+                  (alert.targetType === "DISPLAY" &&
+                    alert.targetDisplay &&
+                    alert.targetDisplay.includes(displayId));
+
+                // Check recency (created within last 3 minutes)
+                const ageMs = Date.now() - new Date(alert.createdAt).getTime();
+                if (isTargeted && ageMs < 3 * 60 * 1000) {
+                  // Dispatch to mechanical Omnitrix overlay
+                  window.dispatchEvent(new CustomEvent("hth-new-alert", { detail: alert }));
+                }
+              }
+            });
+          })
+          .catch(() => {});
+      } catch (err) {
+        console.error("Resilient sync error:", err);
+      }
+    };
+
+    // Initial sync immediately on load
+    syncFromDatabase();
+
+    // High frequency 3-second live sync interval for real-time responsiveness on Vercel
+    const interval = setInterval(syncFromDatabase, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [venueCode, displayId]);
 
   // Initialize Socket.io and Real-time Event Listeners
   useEffect(() => {

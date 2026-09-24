@@ -64,9 +64,16 @@ export default function OmnitrixAlertOverlay({
     socket.on("new-alert", handleNewAlert);
     socket.on("ALERT_BROADCASTED", handleNewAlert);
 
+    // Also support resilient local/polling events
+    const handleCustom = (e: any) => {
+      if (e?.detail) handleNewAlert(e.detail);
+    };
+    window.addEventListener("hth-new-alert", handleCustom);
+
     return () => {
       socket.off("new-alert", handleNewAlert);
       socket.off("ALERT_BROADCASTED", handleNewAlert);
+      window.removeEventListener("hth-new-alert", handleCustom);
     };
   }, [currentAlert]);
 
