@@ -37,6 +37,8 @@ export default function EndScreen() {
   // Authoritative event state from server
   const [currentEvent, setCurrentEvent] = useState<EventType | null>(null);
   const [nextEvent, setNextEvent] = useState<EventType | null>(null);
+  const [activeMilestone, setActiveMilestone] = useState<EventType | null>(null);
+  const [nextMilestone, setNextMilestone] = useState<EventType | null>(null);
   const [serverTime, setServerTime] = useState<string | null>(null);
 
   // 13-Venue Identity State
@@ -146,6 +148,8 @@ export default function EndScreen() {
             if (!isMounted) return;
             if (data?.currentEvent !== undefined) setCurrentEvent(data.currentEvent);
             if (data?.nextEvent !== undefined) setNextEvent(data.nextEvent);
+            if (data?.activeMilestone !== undefined) setActiveMilestone(data.activeMilestone);
+            if (data?.nextMilestone !== undefined) setNextMilestone(data.nextMilestone);
             if (data?.serverTime) setServerTime(data.serverTime);
           })
           .catch(() => {});
@@ -259,6 +263,8 @@ export default function EndScreen() {
     const handleStateSync = (data: {
       currentEvent?: EventType | null;
       nextEvent?: EventType | null;
+      activeMilestone?: EventType | null;
+      nextMilestone?: EventType | null;
       serverTime?: string;
       recentAlerts?: AlertType[];
       voiceSession?: { active: boolean; isMuted: boolean };
@@ -267,6 +273,8 @@ export default function EndScreen() {
     }) => {
       if (data.currentEvent !== undefined) setCurrentEvent(data.currentEvent);
       if (data.nextEvent !== undefined) setNextEvent(data.nextEvent);
+      if (data.activeMilestone !== undefined) setActiveMilestone(data.activeMilestone);
+      if (data.nextMilestone !== undefined) setNextMilestone(data.nextMilestone);
       if (data.serverTime) setServerTime(data.serverTime);
       if (data.recentAlerts && Array.isArray(data.recentAlerts)) {
         setRecentAlerts(data.recentAlerts);
@@ -566,6 +574,38 @@ export default function EndScreen() {
             📢 {displayConfig.customAnnouncement}
           </div>
         )}
+
+        {/* Timeline Event Details Badge Above Timer (With comfortable padding) */}
+        {activeMilestone ? (
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 px-6 py-2.5 rounded-full bg-black/70 border border-neon-cyan/40 backdrop-blur-xl shadow-[0_0_25px_rgba(0,243,255,0.25)] text-xs md:text-sm font-mono tracking-wider animate-pulse mb-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-neon-green animate-pulse shadow-[0_0_8px_#39ff14]" />
+            <span className="text-gray-400 uppercase text-[10px] font-bold">TIMELINE PHASE:</span>
+            <span className="text-neon-cyan font-black uppercase tracking-wide">
+              {activeMilestone.title}
+            </span>
+            <span className="text-gray-500 hidden sm:inline">•</span>
+            <span className="text-gray-300 font-bold">
+              {new Date(activeMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(activeMilestone.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            {nextMilestone && (
+              <>
+                <span className="text-gray-600 hidden md:inline">//</span>
+                <span className="text-gray-400 hidden md:inline text-[11px]">
+                  NEXT: <span className="text-white font-bold">{nextMilestone.title}</span> ({new Date(nextMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                </span>
+              </>
+            )}
+          </div>
+        ) : nextMilestone ? (
+          <div className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-black/70 border border-white/10 backdrop-blur-xl text-xs md:text-sm font-mono tracking-wider mb-2">
+            <span className="w-2 h-2 rounded-full bg-neon-cyan animate-ping" />
+            <span className="text-gray-400 uppercase text-[10px]">NEXT EVENT:</span>
+            <span className="text-white font-bold uppercase">{nextMilestone.title}</span>
+            <span className="text-neon-cyan">
+              at {new Date(nextMilestone.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        ) : null}
 
         {/* Visually Dominant Event Countdown (Controlled by Admin Toggles) */}
         {displayConfig.showCountdown ? (

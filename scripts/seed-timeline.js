@@ -3,6 +3,13 @@ const prisma = new PrismaClient();
 
 const timeline = [
   {
+    title: "HACK THE HORIZON 2.0",
+    description: "24-Hour National Hackathon",
+    startTime: new Date("2026-09-24T10:00:00+05:30"),
+    endTime: new Date("2026-09-25T12:30:00+05:30"),
+    priority: 100,
+  },
+  {
     title: "Participant Registration & Check-in",
     description: "Registration desk open, kit distribution & badge check",
     startTime: new Date("2026-09-24T08:15:00+05:30"),

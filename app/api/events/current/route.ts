@@ -7,18 +7,49 @@ export async function GET() {
   try {
     const now = new Date();
     
-    // Find current event
-    const currentEvent = await prisma.event.findFirst({
+    // 1. Find main grand event (priority >= 50 or highest priority) for main timer
+    let currentEvent = await prisma.event.findFirst({
       where: {
+        priority: { gte: 50 },
         startTime: { lte: now },
         endTime: { gt: now },
       },
       orderBy: { priority: 'desc' },
     });
 
-    // Find next event
+    if (!currentEvent) {
+      currentEvent = await prisma.event.findFirst({
+        where: {
+          startTime: { lte: now },
+          endTime: { gt: now },
+        },
+        orderBy: { priority: 'desc' },
+      });
+    }
+
+    // 2. Find next main event
     const nextEvent = await prisma.event.findFirst({
       where: {
+        priority: { gte: 50 },
+        startTime: { gt: now },
+      },
+      orderBy: { startTime: 'asc' },
+    });
+
+    // 3. Find active timeline milestone (priority < 50)
+    const activeMilestone = await prisma.event.findFirst({
+      where: {
+        priority: { lt: 50 },
+        startTime: { lte: now },
+        endTime: { gt: now },
+      },
+      orderBy: { startTime: 'desc' },
+    });
+
+    // 4. Find next timeline milestone (priority < 50)
+    const nextMilestone = await prisma.event.findFirst({
+      where: {
+        priority: { lt: 50 },
         startTime: { gt: now },
       },
       orderBy: { startTime: 'asc' },
@@ -27,6 +58,8 @@ export async function GET() {
     return NextResponse.json({
       currentEvent,
       nextEvent,
+      activeMilestone,
+      nextMilestone,
       serverTime: now.toISOString(),
     });
   } catch (error) {

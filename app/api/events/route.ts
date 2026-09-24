@@ -7,16 +7,45 @@ async function broadcastScheduleUpdate(io: any) {
   if (!io) return;
   try {
     const now = new Date();
-    const currentEvent = await prisma.event.findFirst({
+    let currentEvent = await prisma.event.findFirst({
       where: {
+        priority: { gte: 50 },
         startTime: { lte: now },
         endTime: { gt: now },
       },
       orderBy: { priority: 'desc' },
     });
 
+    if (!currentEvent) {
+      currentEvent = await prisma.event.findFirst({
+        where: {
+          startTime: { lte: now },
+          endTime: { gt: now },
+        },
+        orderBy: { priority: 'desc' },
+      });
+    }
+
     const nextEvent = await prisma.event.findFirst({
       where: {
+        priority: { gte: 50 },
+        startTime: { gt: now },
+      },
+      orderBy: { startTime: 'asc' },
+    });
+
+    const activeMilestone = await prisma.event.findFirst({
+      where: {
+        priority: { lt: 50 },
+        startTime: { lte: now },
+        endTime: { gt: now },
+      },
+      orderBy: { startTime: 'desc' },
+    });
+
+    const nextMilestone = await prisma.event.findFirst({
+      where: {
+        priority: { lt: 50 },
         startTime: { gt: now },
       },
       orderBy: { startTime: 'asc' },
@@ -25,6 +54,8 @@ async function broadcastScheduleUpdate(io: any) {
     const payload = {
       currentEvent: currentEvent || null,
       nextEvent: nextEvent || null,
+      activeMilestone: activeMilestone || null,
+      nextMilestone: nextMilestone || null,
       serverTime: now.toISOString(),
     };
 
@@ -56,6 +87,13 @@ export async function POST(req: Request) {
     // Handle Seed/Reset to Official 24-25 September Timeline
     if (body.action === 'seed_official_timeline') {
       const timeline = [
+        {
+          title: "HACK THE HORIZON 2.0",
+          description: "24-Hour National Hackathon",
+          startTime: new Date("2026-09-24T10:00:00+05:30"),
+          endTime: new Date("2026-09-25T12:30:00+05:30"),
+          priority: 100,
+        },
         {
           title: "Participant Registration & Check-in",
           description: "Registration desk open, kit distribution & badge check",
