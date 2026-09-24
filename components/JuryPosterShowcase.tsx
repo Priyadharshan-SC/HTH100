@@ -7,7 +7,7 @@ import { ChevronUp, ChevronDown, Maximize2, X, Sparkles, Award } from "lucide-re
 export const JURY_POSTERS = [
   { id: 5, src: "/jury/5.png", label: "Jury Member 01" },
   { id: 6, src: "/jury/6.png", label: "Jury Member 02" },
-  { id: 7, src: "/jury/7.png", label: "Jury Member 03" },
+  { id: 7, src: "/jury/7_replaced.png", label: "Jury Member 03" },
   { id: 8, src: "/jury/8.png", label: "Jury Member 04" },
   { id: 9, src: "/jury/9.png", label: "Jury Member 05" },
   { id: 10, src: "/jury/10.png", label: "Jury Member 06" },
