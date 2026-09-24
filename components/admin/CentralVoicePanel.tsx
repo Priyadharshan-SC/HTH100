@@ -16,7 +16,8 @@ import {
   Clock,
   Sparkles,
   Layers,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from "lucide-react";
 
 interface RecentVoiceNote {
@@ -66,12 +67,14 @@ export default function CentralVoicePanel() {
 
   // History
   const [recentNotes, setRecentNotes] = useState<RecentVoiceNote[]>([]);
+  const [historyPlayingId, setHistoryPlayingId] = useState<string | null>(null);
 
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const historyAudioRef = useRef<HTMLAudioElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   // Fetch recent voice notes on mount
@@ -262,22 +265,104 @@ export default function CentralVoicePanel() {
     }
   };
 
-  // Re-dispatch a previous note
+  // Re-dispatch a previous note (Creates new broadcast with fresh ID & timestamp)
   const handleRedispatch = async (note: RecentVoiceNote) => {
     const confirmRedispatch = confirm(
-      `Re-broadcast "${note.title}" to ${note.targetVenues}?`
+      `Re-broadcast "${note.title}" to ${note.targetVenues === "ALL" ? "All 13 Venues" : note.targetVenues}?`
     );
     if (!confirmRedispatch) return;
 
+    setIsDispatching(true);
+    setDispatchError(null);
+    setDispatchSuccess(null);
+
+    const adminEmail = localStorage.getItem("admin_email") || "Admin Lead";
+
     try {
-      // Fetch full note with audioData
-      const res = await fetch(`/api/voice/broadcast?id=${note.id}`);
-      // Or simply trigger broadcast event with note metadata
+      const res = await fetch("/api/voice/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "redispatch",
+          id: note.id,
+          targetVenues: note.targetVenues,
+          adminName: adminEmail,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to re-dispatch voice note");
+      }
+
+      const data = await res.json();
+
+      // Emit through Socket.IO for instant delivery
       const socket = getSocket();
-      socket.emit("voice-note-broadcast", note);
-      setDispatchSuccess(`Re-dispatched "${note.title}"!`);
+      socket.emit("voice-note-broadcast", data.voiceNote);
+
+      setDispatchSuccess(
+        `Voice note "${note.title}" successfully re-broadcast to ${
+          note.targetVenues === "ALL" ? "All 13 Venues" : note.targetVenues
+        }!`
+      );
+
+      // Refresh list to show newly dispatched item at top
+      fetchRecentNotes();
+    } catch (err: any) {
+      console.error("Re-dispatch error:", err);
+      setDispatchError(err.message || "Failed to re-dispatch voice note.");
+    } finally {
+      setIsDispatching(false);
+    }
+  };
+
+  // Delete a voice note permanently
+  const handleDeleteNote = async (note: RecentVoiceNote) => {
+    const confirmDelete = confirm(`Are you sure you want to permanently delete "${note.title}"?`);
+    if (!confirmDelete) return;
+
+    try {
+      const res = await fetch(`/api/voice/broadcast?id=${note.id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to delete voice note");
+      }
+
+      setRecentNotes((prev) => prev.filter((n) => n.id !== note.id));
+      setDispatchSuccess(`Successfully deleted "${note.title}".`);
+
+      if (historyPlayingId === note.id) {
+        historyAudioRef.current?.pause();
+        setHistoryPlayingId(null);
+      }
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      setDispatchError(err.message || "Failed to delete voice note.");
+    }
+  };
+
+  // Play or pause historical audio note preview
+  const handlePlayHistoryNote = async (note: RecentVoiceNote) => {
+    if (historyPlayingId === note.id) {
+      historyAudioRef.current?.pause();
+      setHistoryPlayingId(null);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/voice/broadcast?id=${note.id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.voiceNote?.audioData && historyAudioRef.current) {
+        historyAudioRef.current.src = data.voiceNote.audioData;
+        historyAudioRef.current.play();
+        setHistoryPlayingId(note.id);
+        historyAudioRef.current.onended = () => setHistoryPlayingId(null);
+      }
     } catch (e) {
-      console.error(e);
+      console.error("Failed to load historical audio note:", e);
     }
   };
 
@@ -316,6 +401,9 @@ export default function CentralVoicePanel() {
           }}
         />
       )}
+
+      {/* Hidden Audio Element for Historical Note Playback */}
+      <audio ref={historyAudioRef} className="hidden" />
 
       {/* Main Broadcast Studio Card */}
       <div className="bg-dark-panel border border-dark-border rounded-2xl p-6 md:p-8 flex flex-col gap-6 shadow-2xl relative overflow-hidden">
@@ -589,12 +677,48 @@ export default function CentralVoicePanel() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {/* Listen Preview */}
+                  <button
+                    onClick={() => handlePlayHistoryNote(note)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold uppercase transition-all flex items-center gap-1.5 ${
+                      historyPlayingId === note.id
+                        ? "bg-neon-cyan/20 border-neon-cyan text-neon-cyan shadow-[0_0_10px_rgba(0,240,255,0.3)]"
+                        : "bg-white/5 hover:bg-white/10 border-white/10 text-gray-300"
+                    }`}
+                    title="Listen to recording preview"
+                  >
+                    {historyPlayingId === note.id ? (
+                      <>
+                        <Pause className="w-3 h-3" />
+                        <span>Pause</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3 h-3 text-neon-cyan" />
+                        <span>Listen</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Re-Broadcast to Venues */}
                   <button
                     onClick={() => handleRedispatch(note)}
-                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-neon-green/20 text-gray-300 hover:text-neon-green border border-white/10 hover:border-neon-green/40 text-xs font-mono font-bold uppercase transition-all flex items-center gap-1.5"
+                    disabled={isDispatching}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-neon-green/20 text-gray-300 hover:text-neon-green border border-white/10 hover:border-neon-green/40 text-xs font-mono font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Re-broadcast announcement to venues"
                   >
                     <Send className="w-3 h-3" />
                     <span>Re-Broadcast</span>
+                  </button>
+
+                  {/* Delete Announcement */}
+                  <button
+                    onClick={() => handleDeleteNote(note)}
+                    className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-500/40 text-xs font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer"
+                    title="Delete announcement permanently"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Delete</span>
                   </button>
                 </div>
               </div>
