@@ -30,6 +30,7 @@ model Alert {
   id        String   @id @default(uuid())
   title     String
   message   String
+  imageUrl  String?  // Optional photo attachment (URL or base64 data URI)
   type      String   @default("INFO") // INFO, SUCCESS, WARNING, URGENT
   priority  String   @default("NORMAL") // NORMAL, HIGH
   duration  Int      @default(15) // seconds in overlay

@@ -10,13 +10,14 @@ export async function PUT(
   try {
     const { id } = params;
     const body = await req.json();
-    const { title, message, type, priority, duration, status } = body;
+    const { title, message, imageUrl, type, priority, duration, status } = body;
 
     const updatedAlert = await prisma.alert.update({
       where: { id },
       data: {
         ...(title !== undefined && { title }),
         ...(message !== undefined && { message }),
+        ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
         ...(type !== undefined && { type }),
         ...(priority !== undefined && { priority }),
         ...(duration !== undefined && { duration: parseInt(duration, 10) }),
