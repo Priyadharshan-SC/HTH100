@@ -1,0 +1,63 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model AdminUser {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  status      String   @default("UPCOMING") // UPCOMING, LIVE, COMPLETED
+  priority    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Alert {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, SUCCESS, WARNING, URGENT
+  priority  String   @default("NORMAL") // NORMAL, HIGH
+  duration  Int      @default(15) // seconds in overlay
+  status    String   @default("SENT") // SENT, DRAFT, ARCHIVED
+  targetType   String   @default("ALL") // ALL, VENUE, DISPLAY
+  targetVenues String?  @default("ALL") // Comma-separated venue codes or JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  createdBy String?  // reference to admin email or ID
+}
+
+model Venue {
+  id          String   @id @default(uuid())
+  venueCode   String   @unique // e.g. VENUE-01 to VENUE-13
+  venueName   String
+  displayName String
+  trackName   String?  @default("MAIN TRACK")
+  status      String   @default("OFFLINE") // ONLINE, RECONNECTING, OFFLINE
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+model DisplayConfig {
+  id                 String   @id @default("global")
+  showCountdown      Boolean  @default(true)
+  showSchedule       Boolean  @default(true)
+  showAlertCentre    Boolean  @default(true)
+  showLogo           Boolean  @default(true)
+  customAnnouncement String?  @default("")
+  updatedAt          DateTime @default(now()) @updatedAt
+}
