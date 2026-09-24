@@ -19,7 +19,14 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ venues: evaluatedVenues });
+    return NextResponse.json(
+      { venues: evaluatedVenues },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
+    );
   } catch (error) {
     console.error('Failed to fetch venues:', error);
     return NextResponse.json({ error: 'Failed to fetch venues' }, { status: 500 });

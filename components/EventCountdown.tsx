@@ -34,12 +34,35 @@ export default function EventCountdown({
   const offsetRef = useRef(serverTimeOffset);
   offsetRef.current = serverTimeOffset;
 
+  // Reactively synchronize incoming prop updates from page polling
+  useEffect(() => {
+    if (initialCurrentEvent !== undefined) {
+      setCurrentEvent(initialCurrentEvent);
+    }
+  }, [initialCurrentEvent]);
+
+  useEffect(() => {
+    if (initialNextEvent !== undefined) {
+      setNextEvent(initialNextEvent);
+    }
+  }, [initialNextEvent]);
+
+  useEffect(() => {
+    if (initialServerTime) {
+      const offset = new Date(initialServerTime).getTime() - Date.now();
+      setServerTimeOffset(offset);
+    }
+  }, [initialServerTime]);
+
   // Listen for socket events and initial state
   useEffect(() => {
     const socket = getSocket();
 
     const fetchCurrent = () => {
-      fetch("/api/events/current")
+      fetch(`/api/events/current?_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
+      })
         .then((res) => res.json())
         .then(applyState)
         .catch(() => {});
@@ -80,7 +103,7 @@ export default function EventCountdown({
       socket.off("SCHEDULE_UPDATED", applyState);
       socket.off("SERVER_STATE_SYNC", applyState);
     };
-  }, [initialCurrentEvent, initialNextEvent, initialServerTime]);
+  }, []);
 
   // Local ticker using authoritative server time offset
   useEffect(() => {

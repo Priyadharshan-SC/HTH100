@@ -22,6 +22,8 @@ export async function POST(req: Request) {
       ? targetVenues.join(',')
       : targetVenues || 'ALL';
 
+    const nowTime = new Date();
+
     // Save or update in Database
     const alert = await prisma.alert.upsert({
       where: { id: id || crypto.randomUUID() },
@@ -35,6 +37,8 @@ export async function POST(req: Request) {
         status: 'SENT',
         targetType: targetType || 'ALL',
         targetVenues: normalizedTargetVenues,
+        createdAt: nowTime,
+        updatedAt: nowTime,
       },
       update: {
         title,
@@ -45,6 +49,8 @@ export async function POST(req: Request) {
         status: 'SENT',
         targetType: targetType || 'ALL',
         targetVenues: normalizedTargetVenues,
+        createdAt: nowTime,
+        updatedAt: nowTime,
       },
     });
 

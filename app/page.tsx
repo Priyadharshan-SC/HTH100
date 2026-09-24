@@ -125,8 +125,17 @@ export default function EndScreen() {
 
     const syncFromDatabase = async () => {
       try {
-        // 1. Sync Display Configuration
-        fetch("/api/display-config")
+        const timestamp = Date.now();
+        const fetchOptions: RequestInit = {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
+        };
+
+        // 1. Sync Display Configuration (Toggles, Custom Announcement Ticker)
+        fetch(`/api/display-config?_t=${timestamp}`, fetchOptions)
           .then((res) => res.json())
           .then((data) => {
             if (!isMounted) return;
@@ -141,8 +150,8 @@ export default function EndScreen() {
           })
           .catch(() => {});
 
-        // 2. Sync Event Schedule & Server Time
-        fetch("/api/events/current")
+        // 2. Sync Event Schedule, Timeline Milestones & Server Time
+        fetch(`/api/events/current?_t=${timestamp}`, fetchOptions)
           .then((res) => res.json())
           .then((data) => {
             if (!isMounted) return;
@@ -155,7 +164,7 @@ export default function EndScreen() {
           .catch(() => {});
 
         // 3. Sync Venues
-        fetch("/api/venues")
+        fetch(`/api/venues?_t=${timestamp}`, fetchOptions)
           .then((res) => res.json())
           .then((data) => {
             if (!isMounted) return;
@@ -180,33 +189,26 @@ export default function EndScreen() {
           })
           .catch(() => {});
 
-        // 5. Sync Alerts & Trigger New Alerts
-        fetch("/api/alerts")
+        // 5. Sync Alerts & Trigger New/Rebroadcasted Alerts Instantly
+        fetch(`/api/alerts?_t=${timestamp}`, fetchOptions)
           .then((res) => res.json())
           .then((data) => {
             if (!isMounted || !data?.alerts || !Array.isArray(data.alerts)) return;
 
             const allAlerts: AlertType[] = data.alerts;
 
-            // On very first load, seed seenAlertIds and populate alert centre with history
-            if (!initialLoadedRef.current) {
-              allAlerts.forEach((a) => seenAlertIds.current.add(a.id));
-              setRecentAlerts(allAlerts.slice(0, 10));
-              initialLoadedRef.current = true;
-              return;
-            }
+            // Instantly sync Alert Centre Feed with active alerts (adds new, updates modified, purges deleted)
+            setRecentAlerts(allAlerts.slice(0, 10));
 
-            // Keep recentAlerts in sync with active database alerts (purges deleted alerts automatically)
-            setRecentAlerts((prev) => {
-              const activeIds = new Set(allAlerts.map((a) => a.id));
-              const updated = prev.filter((a) => activeIds.has(a.id));
-              return updated.length !== prev.length ? updated : prev;
-            });
-
-            // On subsequent polls, check for new alerts targeted to this venue
+            const now = Date.now();
             allAlerts.forEach((alert: any) => {
-              if (!seenAlertIds.current.has(alert.id)) {
-                seenAlertIds.current.add(alert.id);
+              // Composite key includes createdAt/updatedAt so rebroadcasted alerts trigger immediately
+              const alertKey = `${alert.id}_${alert.createdAt || ""}_${alert.updatedAt || ""}`;
+              const eventTimestamp = new Date(alert.updatedAt || alert.createdAt || now).getTime();
+              const ageMs = now - eventTimestamp;
+
+              if (!seenAlertIds.current.has(alertKey)) {
+                seenAlertIds.current.add(alertKey);
 
                 // Check venue targeting
                 const isTargeted =
@@ -219,19 +221,22 @@ export default function EndScreen() {
                     alert.targetDisplay &&
                     alert.targetDisplay.includes(displayId));
 
-                // Check recency (created within last 3 minutes)
-                const ageMs = Date.now() - new Date(alert.createdAt).getTime();
-                if (isTargeted && ageMs < 3 * 60 * 1000) {
+                // On first load: trigger if created within the last 45 seconds so recent broadcasts aren't missed
+                // On subsequent polling: trigger if created/updated within the last 3 minutes
+                const maxAge = initialLoadedRef.current ? 3 * 60 * 1000 : 45 * 1000;
+                if (isTargeted && ageMs < maxAge) {
                   // Dispatch to mechanical Omnitrix overlay
                   window.dispatchEvent(new CustomEvent("hth-new-alert", { detail: alert }));
                 }
               }
             });
+
+            initialLoadedRef.current = true;
           })
           .catch(() => {});
 
         // 6. Sync Latest Voice Note (HTTP Fallback for Vercel)
-        fetch("/api/voice/broadcast?latest=true")
+        fetch(`/api/voice/broadcast?latest=true&_t=${timestamp}`, fetchOptions)
           .then((res) => res.json())
           .then((data) => {
             if (!isMounted || !data?.latest) return;
@@ -246,12 +251,23 @@ export default function EndScreen() {
     // Initial sync immediately on load
     syncFromDatabase();
 
-    // High frequency 3-second live sync interval for real-time responsiveness on Vercel
-    const interval = setInterval(syncFromDatabase, 3000);
+    // High frequency 1.2-second live sync interval for real-time responsiveness without page refresh
+    const interval = setInterval(syncFromDatabase, 1200);
+
+    // Immediate sync on window focus and tab visibility change
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        syncFromDatabase();
+      }
+    };
+    window.addEventListener("focus", syncFromDatabase);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       isMounted = false;
       clearInterval(interval);
+      window.removeEventListener("focus", syncFromDatabase);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [venueCode, displayId]);
 

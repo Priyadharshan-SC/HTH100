@@ -55,13 +55,20 @@ export async function GET() {
       orderBy: { startTime: 'asc' },
     });
 
-    return NextResponse.json({
-      currentEvent,
-      nextEvent,
-      activeMilestone,
-      nextMilestone,
-      serverTime: now.toISOString(),
-    });
+    return NextResponse.json(
+      {
+        currentEvent,
+        nextEvent,
+        activeMilestone,
+        nextMilestone,
+        serverTime: now.toISOString(),
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
+    );
   } catch (error) {
     console.error('Failed to fetch events:', error);
     return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });

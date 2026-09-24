@@ -24,66 +24,179 @@ export const getAudioContext = (): AudioContext | null => {
   return audioCtx;
 };
 
-// Play Omnitrix-style circular mechanical activation sound
-// Original synthesized frequency sweep + mechanical snap
+// Play Omnitrix-style circular mechanical activation sound with loud, commanding klaxon
+// Uses Web Audio API dynamics compression to maximize loudness without clipping
 export const playAlertActivationSound = (priority: string = "NORMAL") => {
   if (!soundEnabled) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
   try {
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+
     const now = ctx.currentTime;
 
-    // 1. Dual electronic detection beep
-    const beepOsc = ctx.createOscillator();
-    const beepGain = ctx.createGain();
-    beepOsc.type = "sine";
-    beepOsc.frequency.setValueAtTime(880, now); // A5
-    beepOsc.frequency.setValueAtTime(1320, now + 0.08); // E6
-    beepGain.gain.setValueAtTime(0.18, now);
-    beepGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-    beepOsc.connect(beepGain);
-    beepGain.connect(ctx.destination);
-    beepOsc.start(now);
-    beepOsc.stop(now + 0.25);
+    // Master Dynamics Compressor to ensure maximum loudness without clipping/distortion
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-4, now);
+    compressor.knee.setValueAtTime(6, now);
+    compressor.ratio.setValueAtTime(12, now);
+    compressor.attack.setValueAtTime(0.002, now);
+    compressor.release.setValueAtTime(0.12, now);
 
-    // 2. Rising mechanical spin / energy ramp (0.2s - 0.7s)
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.95, now); // Loud commanding master output
+    masterGain.connect(compressor);
+    compressor.connect(ctx.destination);
+
+    const isHigh = priority === "HIGH" || priority === "URGENT";
+
+    // 1. Loud Piercing Dual Attention Chime (0.0s - 0.3s)
+    // Chime Pulse 1 (0.0s): Dual tone B5 (987.77Hz) + E6 (1318.5Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "sawtooth";
+    osc1.frequency.setValueAtTime(987.77, now);
+    osc1.frequency.setValueAtTime(1318.5, now + 0.05);
+
+    const filter1 = ctx.createBiquadFilter();
+    filter1.type = "lowpass";
+    filter1.frequency.setValueAtTime(3200, now);
+
+    gain1.gain.setValueAtTime(0.85, now);
+    gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+
+    osc1.connect(filter1);
+    filter1.connect(gain1);
+    gain1.connect(masterGain);
+    osc1.start(now);
+    osc1.stop(now + 0.2);
+
+    // Chime Pulse 2 (0.12s): Higher octave E6 (1318.5Hz) + B6 (1975.5Hz)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sawtooth";
+    osc2.frequency.setValueAtTime(1318.5, now + 0.12);
+    osc2.frequency.setValueAtTime(1975.5, now + 0.18);
+
+    const filter2 = ctx.createBiquadFilter();
+    filter2.type = "lowpass";
+    filter2.frequency.setValueAtTime(4000, now + 0.12);
+
+    gain2.gain.setValueAtTime(0.9, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+
+    osc2.connect(filter2);
+    filter2.connect(gain2);
+    gain2.connect(masterGain);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.35);
+
+    // Sine reinforcement for foundational power
+    const subChime = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subChime.type = "sine";
+    subChime.frequency.setValueAtTime(659.25, now);
+    subChime.frequency.setValueAtTime(987.77, now + 0.12);
+    subGain.gain.setValueAtTime(0.7, now);
+    subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+    subChime.connect(subGain);
+    subGain.connect(masterGain);
+    subChime.start(now);
+    subChime.stop(now + 0.35);
+
+    // 2. Sci-Fi Rising Spin-up & Alert Siren (0.3s - 0.75s)
     const spinOsc = ctx.createOscillator();
     const spinGain = ctx.createGain();
     const spinFilter = ctx.createBiquadFilter();
 
-    spinOsc.type = priority === "HIGH" ? "sawtooth" : "triangle";
-    spinOsc.frequency.setValueAtTime(220, now + 0.2);
-    spinOsc.frequency.exponentialRampToValueAtTime(1760, now + 0.75); // rapid frequency spin up
+    spinOsc.type = isHigh ? "sawtooth" : "triangle";
+    spinOsc.frequency.setValueAtTime(320, now + 0.28);
+    spinOsc.frequency.exponentialRampToValueAtTime(2200, now + 0.72);
+
+    // LFO Siren Warble Effect
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.type = "sine";
+    lfo.frequency.setValueAtTime(isHigh ? 24 : 16, now + 0.28); // Rapid warble
+    lfoGain.gain.setValueAtTime(80, now + 0.28);
+    lfo.connect(spinOsc.frequency);
+    lfo.start(now + 0.28);
+    lfo.stop(now + 0.75);
 
     spinFilter.type = "bandpass";
-    spinFilter.frequency.setValueAtTime(400, now + 0.2);
-    spinFilter.frequency.exponentialRampToValueAtTime(2400, now + 0.75);
-    spinFilter.Q.value = 4.0;
+    spinFilter.frequency.setValueAtTime(600, now + 0.28);
+    spinFilter.frequency.exponentialRampToValueAtTime(3000, now + 0.72);
+    spinFilter.Q.value = 3.5;
 
-    spinGain.gain.setValueAtTime(0.01, now + 0.2);
-    spinGain.gain.linearRampToValueAtTime(0.15, now + 0.65);
-    spinGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    spinGain.gain.setValueAtTime(0.05, now + 0.28);
+    spinGain.gain.linearRampToValueAtTime(0.8, now + 0.65);
+    spinGain.gain.exponentialRampToValueAtTime(0.01, now + 0.75);
 
     spinOsc.connect(spinFilter);
     spinFilter.connect(spinGain);
-    spinGain.connect(ctx.destination);
-    spinOsc.start(now + 0.2);
-    spinOsc.stop(now + 0.85);
+    spinGain.connect(masterGain);
+    spinOsc.start(now + 0.28);
+    spinOsc.stop(now + 0.76);
 
-    // 3. Mechanical Lock / Snap impact at 0.8s
+    // 3. Mechanical Lock / Snap & Sub-Bass Thud (0.75s - 1.1s)
     const snapOsc = ctx.createOscillator();
     const snapGain = ctx.createGain();
     snapOsc.type = "square";
-    snapOsc.frequency.setValueAtTime(240, now + 0.8);
-    snapOsc.frequency.exponentialRampToValueAtTime(60, now + 0.95); // thump
-    snapGain.gain.setValueAtTime(0.25, now + 0.8);
-    snapGain.gain.exponentialRampToValueAtTime(0.001, now + 1.05);
+    snapOsc.frequency.setValueAtTime(350, now + 0.75);
+    snapOsc.frequency.exponentialRampToValueAtTime(50, now + 0.95);
+    snapGain.gain.setValueAtTime(0.9, now + 0.75);
+    snapGain.gain.exponentialRampToValueAtTime(0.005, now + 1.1);
 
     snapOsc.connect(snapGain);
-    snapGain.connect(ctx.destination);
-    snapOsc.start(now + 0.8);
-    snapOsc.stop(now + 1.1);
+    snapGain.connect(masterGain);
+    snapOsc.start(now + 0.75);
+    snapOsc.stop(now + 1.15);
+
+    // Sub-bass heavy thump on lock
+    const subThump = ctx.createOscillator();
+    const subThumpGain = ctx.createGain();
+    subThump.type = "sine";
+    subThump.frequency.setValueAtTime(140, now + 0.75);
+    subThump.frequency.exponentialRampToValueAtTime(35, now + 1.05);
+    subThumpGain.gain.setValueAtTime(0.85, now + 0.75);
+    subThumpGain.gain.exponentialRampToValueAtTime(0.005, now + 1.1);
+
+    subThump.connect(subThumpGain);
+    subThumpGain.connect(masterGain);
+    subThump.start(now + 0.75);
+    subThump.stop(now + 1.15);
+
+    // Metallic latch transient click
+    const clickOsc = ctx.createOscillator();
+    const clickGain = ctx.createGain();
+    clickOsc.type = "triangle";
+    clickOsc.frequency.setValueAtTime(3200, now + 0.75);
+    clickGain.gain.setValueAtTime(0.7, now + 0.75);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.82);
+
+    clickOsc.connect(clickGain);
+    clickGain.connect(masterGain);
+    clickOsc.start(now + 0.75);
+    clickOsc.stop(now + 0.85);
+
+    // Extra urgent second chime for URGENT / HIGH priority alerts
+    if (isHigh) {
+      const urgentOsc = ctx.createOscillator();
+      const urgentGain = ctx.createGain();
+      urgentOsc.type = "sawtooth";
+      urgentOsc.frequency.setValueAtTime(1760, now + 0.9);
+      urgentOsc.frequency.setValueAtTime(2640, now + 1.05);
+      urgentGain.gain.setValueAtTime(0.85, now + 0.9);
+      urgentGain.gain.exponentialRampToValueAtTime(0.01, now + 1.25);
+
+      urgentOsc.connect(urgentGain);
+      urgentGain.connect(masterGain);
+      urgentOsc.start(now + 0.9);
+      urgentOsc.stop(now + 1.3);
+    }
   } catch (err) {
     console.warn("Sound effect synthesis error:", err);
   }

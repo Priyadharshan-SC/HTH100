@@ -69,10 +69,17 @@ async function broadcastScheduleUpdate(io: any) {
 export async function GET() {
   try {
     const events = await prisma.event.findMany({
-      orderBy: { startTime: 'asc' },
+       orderBy: { startTime: 'asc' },
     });
 
-    return NextResponse.json({ events });
+    return NextResponse.json(
+      { events },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
+    );
   } catch (error) {
     console.error('Failed to fetch events:', error);
     return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });

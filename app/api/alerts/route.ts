@@ -28,7 +28,14 @@ export async function GET(req: Request) {
       take: 100,
     });
 
-    return NextResponse.json({ alerts });
+    return NextResponse.json(
+      { alerts },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
+    );
   } catch (error) {
     console.error('Failed to fetch alerts:', error);
     return NextResponse.json({ error: 'Failed to fetch alerts' }, { status: 500 });

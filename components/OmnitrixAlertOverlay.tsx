@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getSocket } from "@/lib/socket";
-import { playAlertActivationSound, isSoundEnabled, setSoundEnabled } from "@/lib/soundFX";
+import { playAlertActivationSound, isSoundEnabled, setSoundEnabled, getAudioContext } from "@/lib/soundFX";
 
 export type AlertType = {
   id: string;
@@ -42,6 +42,13 @@ export default function OmnitrixAlertOverlay({
     const next = !soundOn;
     setSoundOn(next);
     setSoundEnabled(next);
+    if (next) {
+      const ctx = getAudioContext();
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+      playAlertActivationSound("NORMAL");
+    }
   };
 
   // Handle incoming socket alerts

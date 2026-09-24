@@ -9,13 +9,22 @@ export async function GET() {
       where: { id: 'global' },
     });
 
-    return NextResponse.json({ config: config || {
-      showCountdown: true,
-      showSchedule: true,
-      showAlertCentre: true,
-      showLogo: true,
-      customAnnouncement: "",
-    }});
+    return NextResponse.json(
+      {
+        config: config || {
+          showCountdown: true,
+          showSchedule: true,
+          showAlertCentre: true,
+          showLogo: true,
+          customAnnouncement: "",
+        },
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
+    );
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch display config' }, { status: 500 });
   }

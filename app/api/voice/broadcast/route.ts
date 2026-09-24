@@ -121,7 +121,14 @@ export async function GET(req: Request) {
         orderBy: { createdAt: 'desc' },
       });
 
-      return NextResponse.json({ latest: latest || null });
+      return NextResponse.json(
+        { latest: latest || null },
+        {
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          },
+        }
+      );
     }
 
     // Return the 15 most recent voice notes (lightweight list query)
@@ -139,7 +146,14 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json({ voiceNotes });
+    return NextResponse.json(
+      { voiceNotes },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
+    );
   } catch (error) {
     console.error('Failed to fetch voice notes:', error);
     return NextResponse.json({ error: 'Failed to fetch voice notes' }, { status: 500 });
