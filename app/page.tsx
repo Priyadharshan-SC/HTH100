@@ -29,6 +29,18 @@ interface ActiveVoiceNote {
   audioData: string;
 }
 
+const isSameEvent = (a?: EventType | null, b?: EventType | null) => {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.startTime === b.startTime &&
+    a.endTime === b.endTime &&
+    a.title === b.title &&
+    a.status === b.status
+  );
+};
+
 export default function EndScreen() {
   const [voiceState, setVoiceState] = useState<JarvisState>("STANDBY");
   const [activeVoiceNote, setActiveVoiceNote] = useState<ActiveVoiceNote | null>(null);
@@ -249,11 +261,30 @@ export default function EndScreen() {
           .then((res) => res.json())
           .then((data) => {
             if (!isMounted) return;
-            if (data?.currentEvent !== undefined) setCurrentEvent(data.currentEvent);
-            if (data?.nextEvent !== undefined) setNextEvent(data.nextEvent);
-            if (data?.activeMilestone !== undefined) setActiveMilestone(data.activeMilestone);
-            if (data?.nextMilestone !== undefined) setNextMilestone(data.nextMilestone);
-            if (data?.serverTime) setServerTime(data.serverTime);
+            if (data?.currentEvent !== undefined) {
+              setCurrentEvent((prev) => (isSameEvent(prev, data.currentEvent) ? prev : (data.currentEvent ?? null)));
+            }
+            if (data?.nextEvent !== undefined) {
+              setNextEvent((prev) => (isSameEvent(prev, data.nextEvent) ? prev : (data.nextEvent ?? null)));
+            }
+            if (data?.activeMilestone !== undefined) {
+              setActiveMilestone((prev) => (isSameEvent(prev, data.activeMilestone) ? prev : (data.activeMilestone ?? null)));
+            }
+            if (data?.nextMilestone !== undefined) {
+              setNextMilestone((prev) => (isSameEvent(prev, data.nextMilestone) ? prev : (data.nextMilestone ?? null)));
+            }
+            if (data?.serverTime) {
+              const incomingTime = data.serverTime;
+              setServerTime((prev) => {
+                if (!prev) return incomingTime;
+                const prevMs = new Date(prev).getTime();
+                const newMs = new Date(incomingTime).getTime();
+                if (Math.abs(newMs - prevMs) > 3000) {
+                  return incomingTime;
+                }
+                return prev;
+              });
+            }
           })
           .catch(() => {});
 
@@ -393,11 +424,30 @@ export default function EndScreen() {
       venues?: any[];
       displayConfig?: DisplayConfig;
     }) => {
-      if (data.currentEvent !== undefined) setCurrentEvent(data.currentEvent);
-      if (data.nextEvent !== undefined) setNextEvent(data.nextEvent);
-      if (data.activeMilestone !== undefined) setActiveMilestone(data.activeMilestone);
-      if (data.nextMilestone !== undefined) setNextMilestone(data.nextMilestone);
-      if (data.serverTime) setServerTime(data.serverTime);
+      if (data.currentEvent !== undefined) {
+        setCurrentEvent((prev) => (isSameEvent(prev, data.currentEvent) ? prev : (data.currentEvent ?? null)));
+      }
+      if (data.nextEvent !== undefined) {
+        setNextEvent((prev) => (isSameEvent(prev, data.nextEvent) ? prev : (data.nextEvent ?? null)));
+      }
+      if (data.activeMilestone !== undefined) {
+        setActiveMilestone((prev) => (isSameEvent(prev, data.activeMilestone) ? prev : (data.activeMilestone ?? null)));
+      }
+      if (data.nextMilestone !== undefined) {
+        setNextMilestone((prev) => (isSameEvent(prev, data.nextMilestone) ? prev : (data.nextMilestone ?? null)));
+      }
+      if (data.serverTime) {
+        const incomingTime = data.serverTime;
+        setServerTime((prev) => {
+          if (!prev) return incomingTime;
+          const prevMs = new Date(prev).getTime();
+          const newMs = new Date(incomingTime).getTime();
+          if (Math.abs(newMs - prevMs) > 3000) {
+            return incomingTime;
+          }
+          return prev;
+        });
+      }
       if (data.recentAlerts && Array.isArray(data.recentAlerts)) {
         setRecentAlerts(data.recentAlerts);
       }

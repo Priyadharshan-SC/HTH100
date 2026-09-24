@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { getSocket } from "@/lib/socket";
 
 export type EventType = {
@@ -19,6 +19,18 @@ interface EventCountdownProps {
   initialServerTime?: string | null;
 }
 
+const isSameEvent = (a?: EventType | null, b?: EventType | null) => {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.startTime === b.startTime &&
+    a.endTime === b.endTime &&
+    a.title === b.title &&
+    a.status === b.status
+  );
+};
+
 export default function EventCountdown({
   initialCurrentEvent = null,
   initialNextEvent = null,
@@ -26,33 +38,47 @@ export default function EventCountdown({
 }: EventCountdownProps) {
   const [currentEvent, setCurrentEvent] = useState<EventType | null>(initialCurrentEvent);
   const [nextEvent, setNextEvent] = useState<EventType | null>(initialNextEvent);
-  const [serverTimeOffset, setServerTimeOffset] = useState<number>(() => {
-    return initialServerTime ? new Date(initialServerTime).getTime() - Date.now() : 0;
-  });
   const [timeLeft, setTimeLeft] = useState<{ hours: string; minutes: string; seconds: string } | null>(null);
 
-  const offsetRef = useRef(serverTimeOffset);
-  offsetRef.current = serverTimeOffset;
+  // Authoritative server clock offset (smoothed against network RTT latency jitter)
+  const offsetRef = useRef<number>(
+    initialServerTime ? new Date(initialServerTime).getTime() - Date.now() : 0
+  );
+  const hasInitializedOffsetRef = useRef<boolean>(!!initialServerTime);
 
-  // Reactively synchronize incoming prop updates from page polling
+  const updateServerOffset = useCallback((serverTimeStr?: string | null) => {
+    if (!serverTimeStr) return;
+    const measuredOffset = new Date(serverTimeStr).getTime() - Date.now();
+    if (!hasInitializedOffsetRef.current) {
+      offsetRef.current = measuredOffset;
+      hasInitializedOffsetRef.current = true;
+    } else {
+      // Only adjust if drift exceeds 3000ms to eliminate 1200ms HTTP polling latency jitter
+      const drift = Math.abs(measuredOffset - offsetRef.current);
+      if (drift > 3000) {
+        offsetRef.current = measuredOffset;
+      }
+    }
+  }, []);
+
+  // Reactively synchronize incoming prop updates from page polling without thrashing state
   useEffect(() => {
     if (initialCurrentEvent !== undefined) {
-      setCurrentEvent(initialCurrentEvent);
+      setCurrentEvent((prev) => (isSameEvent(prev, initialCurrentEvent) ? prev : initialCurrentEvent));
     }
   }, [initialCurrentEvent]);
 
   useEffect(() => {
     if (initialNextEvent !== undefined) {
-      setNextEvent(initialNextEvent);
+      setNextEvent((prev) => (isSameEvent(prev, initialNextEvent) ? prev : initialNextEvent));
     }
   }, [initialNextEvent]);
 
   useEffect(() => {
     if (initialServerTime) {
-      const offset = new Date(initialServerTime).getTime() - Date.now();
-      setServerTimeOffset(offset);
+      updateServerOffset(initialServerTime);
     }
-  }, [initialServerTime]);
+  }, [initialServerTime, updateServerOffset]);
 
   // Listen for socket events and initial state
   useEffect(() => {
@@ -77,11 +103,14 @@ export default function EventCountdown({
         fetchCurrent();
         return;
       }
-      if (data.currentEvent !== undefined) setCurrentEvent(data.currentEvent);
-      if (data.nextEvent !== undefined) setNextEvent(data.nextEvent);
+      if (data.currentEvent !== undefined) {
+        setCurrentEvent((prev) => (isSameEvent(prev, data.currentEvent) ? prev : (data.currentEvent ?? null)));
+      }
+      if (data.nextEvent !== undefined) {
+        setNextEvent((prev) => (isSameEvent(prev, data.nextEvent) ? prev : (data.nextEvent ?? null)));
+      }
       if (data.serverTime) {
-        const offset = new Date(data.serverTime).getTime() - Date.now();
-        setServerTimeOffset(offset);
+        updateServerOffset(data.serverTime);
       }
     };
 
@@ -103,7 +132,14 @@ export default function EventCountdown({
       socket.off("SCHEDULE_UPDATED", applyState);
       socket.off("SERVER_STATE_SYNC", applyState);
     };
-  }, []);
+  }, [initialCurrentEvent, initialNextEvent, initialServerTime, updateServerOffset]);
+
+  // Stable keys for event timing boundaries to keep interval stable
+  const currentEventId = currentEvent?.id;
+  const currentEndTime = currentEvent?.endTime;
+  const currentTitle = currentEvent?.title;
+  const nextEventId = nextEvent?.id;
+  const nextStartTime = nextEvent?.startTime;
 
   // Local ticker using authoritative server time offset
   useEffect(() => {
@@ -130,25 +166,46 @@ export default function EventCountdown({
         // Countdown reached zero, request server sync
         const socket = getSocket();
         socket.emit("REQUEST_CURRENT_STATE");
-        setTimeLeft({ hours: "00", minutes: "00", seconds: "00" });
+        setTimeLeft((prev) => {
+          if (prev?.hours === "00" && prev?.minutes === "00" && prev?.seconds === "00") return prev;
+          return { hours: "00", minutes: "00", seconds: "00" };
+        });
         return;
       }
 
-      const h = Math.floor(diff / (1000 * 60 * 60));
-      const m = Math.floor((diff / (1000 * 60)) % 60);
-      const s = Math.floor((diff / 1000) % 60);
+      // Convert exact milliseconds to total whole seconds
+      const totalSeconds = Math.max(0, Math.floor(diff / 1000));
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
 
-      setTimeLeft({
-        hours: h.toString().padStart(2, "0"),
-        minutes: m.toString().padStart(2, "0"),
-        seconds: s.toString().padStart(2, "0"),
+      const hoursStr = h.toString().padStart(2, "0");
+      const minutesStr = m.toString().padStart(2, "0");
+      const secondsStr = s.toString().padStart(2, "0");
+
+      setTimeLeft((prev) => {
+        // Only trigger a component re-render when the displayed second, minute, or hour actually advances
+        if (
+          prev &&
+          prev.hours === hoursStr &&
+          prev.minutes === minutesStr &&
+          prev.seconds === secondsStr
+        ) {
+          return prev;
+        }
+        return {
+          hours: hoursStr,
+          minutes: minutesStr,
+          seconds: secondsStr,
+        };
       });
     };
 
     calculateTime();
-    const interval = setInterval(calculateTime, 1000);
+    // 250ms interval ensures the second digit updates cleanly right on the second boundary without lag or stutter
+    const interval = setInterval(calculateTime, 250);
     return () => clearInterval(interval);
-  }, [currentEvent, nextEvent]);
+  }, [currentEventId, currentEndTime, currentTitle, nextEventId, nextStartTime]);
 
   if (!currentEvent && !nextEvent) {
     return (
