@@ -499,45 +499,13 @@ export default function EndScreen() {
           </div>
         )}
 
-        {/* Top-Right Venue Identity & Telemetry Indicator (Never Overlaps) */}
+        {/* Top-Right Branding */}
         <div className="flex items-center gap-3">
           <img
             src="/cis.png"
             alt="IEEE CIS Logo"
             className="h-8 sm:h-10 md:h-12 w-auto object-contain hidden md:block drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]"
           />
-
-          {/* Dedicated Telemetry Pill */}
-          <div className="flex items-center gap-2.5 bg-black/80 backdrop-blur-md border border-white/10 px-4 py-2 rounded-2xl shadow-xl">
-            {/* Status dot */}
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                connectionStatus === "CONNECTED"
-                  ? "bg-neon-green animate-pulse shadow-[0_0_8px_#39ff14]"
-                  : "bg-yellow-400 animate-ping"
-              }`}
-            />
-
-            {/* Venue Tag */}
-            <div className="flex flex-col text-left">
-              <span className="font-mono font-black text-xs text-white tracking-wider flex items-center gap-1.5">
-                <span className="text-neon-cyan">{venueCode}</span>
-                <span className="text-gray-400">•</span>
-                <span className="truncate max-w-[140px] sm:max-w-[200px]">{venueName}</span>
-              </span>
-              <span className="font-mono text-[10px] text-gray-400 tracking-widest uppercase">
-                {displayId} // {connectionStatus === "CONNECTED" ? "ONLINE" : "RECONNECTING..."}
-              </span>
-            </div>
-
-            {/* Voice Active Badge */}
-            {activeVoiceNote && (
-              <span className="font-mono text-[10px] text-neon-green font-bold border-l border-white/20 pl-2.5 animate-pulse flex items-center gap-1">
-                <Radio className="w-3.5 h-3.5 text-neon-green" />
-                <span className="hidden sm:inline">VOICE NOTE PLAYING</span>
-              </span>
-            )}
-          </div>
         </div>
       </header>
 
