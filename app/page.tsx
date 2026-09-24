@@ -560,13 +560,6 @@ export default function EndScreen() {
           Visually dominant, scalable from 1080p to 4K
           ========================================================================= */}
       <div className="flex-1 w-full max-w-6xl mx-auto flex flex-col items-center justify-center gap-6 my-4 z-10">
-        {/* Track Designation Pill */}
-        <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-mono tracking-widest uppercase text-neon-cyan shadow-sm">
-          <span>{trackName}</span>
-          <span className="text-gray-500">//</span>
-          <span className="text-gray-300">{venueCode}</span>
-        </div>
-
         {/* Live Admin Announcement Ticker (If Configured) */}
         {displayConfig.customAnnouncement && displayConfig.customAnnouncement.trim() && (
           <div className="w-full max-w-4xl px-4 py-2 rounded-xl bg-neon-cyan/10 border border-neon-cyan/40 text-neon-cyan font-mono text-xs text-center uppercase tracking-wider animate-pulse">

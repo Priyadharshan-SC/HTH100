@@ -201,6 +201,30 @@ export default function AdminSchedulePage() {
     setShowEventModal(true);
   };
 
+  const handleApplyOfficialTimeline = async () => {
+    const confirmSeed = confirm(
+      "Replace current schedule with the official 24-25 September Hackathon Timeline (18 milestones)?"
+    );
+    if (!confirmSeed) return;
+
+    try {
+      const res = await fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "seed_official_timeline" }),
+      });
+      if (res.ok) {
+        alert("Official 24-25 September Timeline successfully applied and synced to all screens!");
+        fetchEvents();
+      } else {
+        alert("Failed to apply timeline");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error applying timeline");
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-dark text-white select-none">
       <AdminSidebar />
@@ -221,8 +245,16 @@ export default function AdminSchedulePage() {
 
           <div className="flex items-center gap-3">
             <button
+              onClick={handleApplyOfficialTimeline}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-neon-cyan/20 border border-neon-cyan text-neon-cyan font-bold text-xs uppercase tracking-wider hover:bg-neon-cyan hover:text-black transition-all cursor-pointer shadow-[0_0_15px_rgba(0,240,255,0.2)]"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>APPLY 24-25 SEPT TIMELINE</span>
+            </button>
+
+            <button
               onClick={openCreateModal}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neon-green text-dark font-black text-xs uppercase tracking-wider hover:shadow-[0_0_15px_rgba(57,255,20,0.4)] transition-all"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-neon-green text-dark font-black text-xs uppercase tracking-wider hover:shadow-[0_0_15px_rgba(57,255,20,0.4)] transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>NEW SCHEDULE EVENT</span>
