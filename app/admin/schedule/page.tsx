@@ -80,6 +80,12 @@ export default function AdminSchedulePage() {
     fetchConfig();
     fetchEvents();
 
+    // Auto-refresh schedule and display config in background without manual reload
+    const interval = setInterval(() => {
+      fetchConfig();
+      fetchEvents();
+    }, 4000);
+
     const socket = getSocket();
     const handleSync = () => {
       fetchConfig();
@@ -93,6 +99,7 @@ export default function AdminSchedulePage() {
     socket.on("SCHEDULE_UPDATED", handleSync);
 
     return () => {
+      clearInterval(interval);
       socket.off("DISPLAY_CONFIG_UPDATED", handleSync);
       socket.off("EVENT_CREATED", handleSync);
       socket.off("EVENT_UPDATED", handleSync);

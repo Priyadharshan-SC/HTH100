@@ -48,22 +48,25 @@ export default function AdminDashboard() {
       router.push("/admin/login");
     }
 
-    // Fetch current and next events
-    fetch("/api/events/current")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.currentEvent) setCurrentEvent(data.currentEvent);
-        if (data.nextEvent) setNextEvent(data.nextEvent);
-      })
-      .catch(() => {});
+    const fetchDashboardData = () => {
+      fetch("/api/events/current")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.currentEvent) setCurrentEvent(data.currentEvent);
+          if (data?.nextEvent) setNextEvent(data.nextEvent);
+        })
+        .catch(() => {});
 
-    // Fetch venues
-    fetch("/api/venues")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.venues) setVenues(data.venues);
-      })
-      .catch(() => {});
+      fetch("/api/venues")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.venues) setVenues(data.venues);
+        })
+        .catch(() => {});
+    };
+
+    fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 4000);
 
     // Listen to real-time events & voice
     const socket = getSocket();
@@ -129,6 +132,7 @@ export default function AdminDashboard() {
     });
 
     return () => {
+      clearInterval(interval);
       socket.off("voice-session-started");
       socket.off("voice-session-ended");
       socket.off("VOICE_STARTED");

@@ -149,6 +149,13 @@ export default function EndScreen() {
               return;
             }
 
+            // Keep recentAlerts in sync with active database alerts (purges deleted alerts automatically)
+            setRecentAlerts((prev) => {
+              const activeIds = new Set(allAlerts.map((a) => a.id));
+              const updated = prev.filter((a) => activeIds.has(a.id));
+              return updated.length !== prev.length ? updated : prev;
+            });
+
             // On subsequent polls, check for new alerts targeted to this venue
             allAlerts.forEach((alert: any) => {
               if (!seenAlertIds.current.has(alert.id)) {

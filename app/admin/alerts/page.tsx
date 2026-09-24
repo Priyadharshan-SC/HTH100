@@ -70,6 +70,19 @@ export default function AdminAlertsPage() {
   useEffect(() => {
     fetchAlerts();
 
+    // Auto-refresh alerts log in background without requiring manual reload
+    const interval = setInterval(() => {
+      const url = new URL("/api/alerts", window.location.origin);
+      if (selectedTypeFilter !== "ALL") url.searchParams.set("type", selectedTypeFilter);
+      if (searchQuery.trim()) url.searchParams.set("search", searchQuery.trim());
+      fetch(url.toString())
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.alerts) setAlerts(data.alerts);
+        })
+        .catch(() => {});
+    }, 4000);
+
     const socket = getSocket();
     const handleSync = () => {
       fetchAlerts();
@@ -81,6 +94,7 @@ export default function AdminAlertsPage() {
     socket.on("ALERT_BROADCASTED", handleSync);
 
     return () => {
+      clearInterval(interval);
       socket.off("ALERT_CREATED", handleSync);
       socket.off("ALERT_UPDATED", handleSync);
       socket.off("ALERT_DELETED", handleSync);
