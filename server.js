@@ -168,8 +168,8 @@ app.prepare().then(() => {
       }
     });
 
-    // 4. Central Voice Session Lock (Only 1 admin can broadcast)
-    socket.on("voice-start-session", (data, callback) => {
+    // 4. Central Voice Session Lock & Database Persistence
+    socket.on("voice-start-session", async (data, callback) => {
       if (voiceSession.active && voiceSession.adminSocketId !== socket.id) {
         if (typeof callback === "function") {
           callback({
@@ -185,12 +185,29 @@ app.prepare().then(() => {
       voiceSession = {
         active: true,
         sessionId,
-        adminId: data.adminId,
-        adminName: data.adminName,
+        adminId: data.adminId || "admin-1",
+        adminName: data.adminName || "Organizer",
         adminSocketId: socket.id,
         startedAt: new Date().toISOString(),
         isMuted: false,
+        channel: data.channel || "ALL",
       };
+
+      try {
+        await prisma.voiceSession.create({
+          data: {
+            sessionId,
+            adminId: voiceSession.adminId,
+            adminName: voiceSession.adminName,
+            status: "ACTIVE",
+            roomName: "hth-central-voice",
+            channel: voiceSession.channel,
+            startedAt: new Date(),
+          },
+        });
+      } catch (err) {
+        console.warn("DB VoiceSession logging warning:", err.message);
+      }
 
       io.emit("voice-session-started", { session: voiceSession });
       io.emit("VOICE_STARTED", { session: voiceSession });
@@ -210,9 +227,16 @@ app.prepare().then(() => {
     });
 
     // 6. Voice Mute Toggle
-    socket.on("voice-mute-toggle", (data) => {
+    socket.on("voice-mute-toggle", async (data) => {
       if (voiceSession.active && voiceSession.adminSocketId === socket.id) {
         voiceSession.isMuted = !!data.isMuted;
+        try {
+          await prisma.voiceSession.updateMany({
+            where: { sessionId: voiceSession.sessionId },
+            data: { status: voiceSession.isMuted ? "MUTED" : "ACTIVE" },
+          });
+        } catch (e) {}
+
         io.emit("voice-mute-updated", { isMuted: voiceSession.isMuted });
         io.emit(voiceSession.isMuted ? "VOICE_MUTED" : "VOICE_UNMUTED", {
           isMuted: voiceSession.isMuted,
@@ -221,8 +245,9 @@ app.prepare().then(() => {
     });
 
     // 7. Voice End Session
-    socket.on("voice-end-session", () => {
-      if (voiceSession.active && voiceSession.adminSocketId === socket.id) {
+    const endVoiceSession = async () => {
+      if (voiceSession.active) {
+        const endedId = voiceSession.sessionId;
         voiceSession = {
           active: false,
           sessionId: null,
@@ -232,68 +257,31 @@ app.prepare().then(() => {
           startedAt: null,
           isMuted: false,
         };
+
+        if (endedId) {
+          try {
+            await prisma.voiceSession.updateMany({
+              where: { sessionId: endedId },
+              data: { status: "ENDED", endedAt: new Date() },
+            });
+          } catch (e) {}
+        }
+
         io.emit("voice-session-ended");
         io.emit("VOICE_ENDED");
       }
-    });
+    };
 
-    // 8. WebRTC Audio Signaling Relays with Session & Peer IDs
-    socket.on("voice-request-stream", (data) => {
-      if (voiceSession.active && voiceSession.adminSocketId) {
-        io.to(voiceSession.adminSocketId).emit("voice-request-stream", {
-          receiverSocketId: socket.id,
-          voiceSessionId: data?.voiceSessionId || voiceSession.sessionId,
-        });
-      }
-    });
-
-    socket.on("voice-signal-offer", (data) => {
-      if (data.target) {
-        io.to(data.target).emit("voice-signal-offer", {
-          offer: data.offer,
-          voiceSessionId: data.voiceSessionId,
-          peerConnectionId: data.peerConnectionId,
-          from: socket.id,
-        });
-      }
-    });
-
-    socket.on("voice-signal-answer", (data) => {
-      if (data.target) {
-        io.to(data.target).emit("voice-signal-answer", {
-          answer: data.answer,
-          voiceSessionId: data.voiceSessionId,
-          peerConnectionId: data.peerConnectionId,
-          from: socket.id,
-        });
-      }
-    });
-
-    socket.on("voice-signal-ice", (data) => {
-      if (data.target) {
-        io.to(data.target).emit("voice-signal-ice", {
-          candidate: data.candidate,
-          voiceSessionId: data.voiceSessionId,
-          peerConnectionId: data.peerConnectionId,
-          from: socket.id,
-        });
+    socket.on("voice-end-session", () => {
+      if (voiceSession.active && voiceSession.adminSocketId === socket.id) {
+        endVoiceSession();
       }
     });
 
     socket.on("disconnect", () => {
       // If active voice admin disconnects, terminate broadcast safely
       if (voiceSession.active && voiceSession.adminSocketId === socket.id) {
-        voiceSession = {
-          active: false,
-          sessionId: null,
-          adminId: null,
-          adminName: null,
-          adminSocketId: null,
-          startedAt: null,
-          isMuted: false,
-        };
-        io.emit("voice-session-ended");
-        io.emit("VOICE_ENDED");
+        endVoiceSession();
       }
 
       // If registered smart board disconnects

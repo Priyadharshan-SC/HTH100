@@ -61,3 +61,18 @@ model DisplayConfig {
   customAnnouncement String?  @default("")
   updatedAt          DateTime @default(now()) @updatedAt
 }
+
+model VoiceSession {
+  id            String    @id @default(uuid())
+  sessionId     String    @unique
+  adminId       String?
+  adminName     String?
+  status        String    @default("ACTIVE") // ACTIVE, MUTED, ENDED
+  roomName      String    @default("hth-central-voice")
+  channel       String    @default("ALL")
+  startedAt     DateTime  @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+}
+
