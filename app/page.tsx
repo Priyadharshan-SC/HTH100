@@ -140,11 +140,11 @@ export default function EndScreen() {
             if (!isMounted || !data?.alerts || !Array.isArray(data.alerts)) return;
 
             const allAlerts: AlertType[] = data.alerts;
-            setRecentAlerts(allAlerts.slice(0, 10));
 
-            // On very first load, seed seenAlertIds so historical alerts don't blast on startup
+            // On very first load, seed seenAlertIds and populate alert centre with history
             if (!initialLoadedRef.current) {
               allAlerts.forEach((a) => seenAlertIds.current.add(a.id));
+              setRecentAlerts(allAlerts.slice(0, 10));
               initialLoadedRef.current = true;
               return;
             }

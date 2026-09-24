@@ -313,7 +313,15 @@ export default function OmnitrixAlertOverlay({
                 {/* Futuristic Scanlines Overlay */}
                 <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.4)_50%)] bg-[length:100%_4px] pointer-events-none opacity-40" />
 
-                {/* Top Sci-Fi Header Tag */}
+                {/* Top Sci-Fi Header Tag & Dismiss Button */}
+                <button
+                  onClick={() => setAnimPhase("COLLAPSE")}
+                  className="absolute top-4 right-4 z-20 text-gray-400 hover:text-white bg-black/40 hover:bg-white/20 px-3 py-1 rounded-full border border-white/10 transition-all text-xs font-mono tracking-wider uppercase cursor-pointer"
+                  title="Dismiss alert"
+                >
+                  ✕ Dismiss
+                </button>
+
                 <div className="flex items-center justify-center gap-3 mb-6 relative z-10">
                   <div
                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/80 border ${styleConfig.border} ${styleConfig.text} font-mono font-black text-xs tracking-[0.25em] uppercase shadow-lg`}
