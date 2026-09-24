@@ -240,10 +240,6 @@ export default function CentralVoicePanel() {
 
       const data = await res.json();
 
-      // 2. Also emit through Socket.IO for instant zero-delay delivery
-      const socket = getSocket();
-      socket.emit("voice-note-broadcast", data.voiceNote);
-
       setDispatchSuccess(
         `Voice note successfully dispatched to ${
           targetVenue === "ALL" ? "All 13 Venues" : targetVenue
@@ -295,10 +291,6 @@ export default function CentralVoicePanel() {
       }
 
       const data = await res.json();
-
-      // Emit through Socket.IO for instant delivery
-      const socket = getSocket();
-      socket.emit("voice-note-broadcast", data.voiceNote);
 
       setDispatchSuccess(
         `Voice note "${note.title}" successfully re-broadcast to ${

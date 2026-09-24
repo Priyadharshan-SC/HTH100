@@ -6,6 +6,7 @@ import EventCountdown, { EventType } from "@/components/EventCountdown";
 import JarvisOrb, { JarvisState } from "@/components/JarvisOrb";
 import OmnitrixAlertOverlay, { AlertType } from "@/components/OmnitrixAlertOverlay";
 import AlertCentreFeed from "@/components/AlertCentreFeed";
+import VoiceMessageCentreFeed, { VoiceMessageItem } from "@/components/VoiceMessageCentreFeed";
 import { getSocket } from "@/lib/socket";
 import { getAudioContext } from "@/lib/soundFX";
 import { Radio, Volume2, Tv, Wifi, ShieldAlert, Sparkles } from "lucide-react";
@@ -30,6 +31,8 @@ export default function EndScreen() {
   const [voiceState, setVoiceState] = useState<JarvisState>("STANDBY");
   const [activeVoiceNote, setActiveVoiceNote] = useState<ActiveVoiceNote | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<AlertType[]>([]);
+  const [recentVoiceNotes, setRecentVoiceNotes] = useState<VoiceMessageItem[]>([]);
+  const [replayPlayingId, setReplayPlayingId] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState<boolean>(false);
   const [connectionStatus, setConnectionStatus] = useState<"CONNECTED" | "RECONNECTING" | "OFFLINE">("CONNECTED");
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -57,11 +60,13 @@ export default function EndScreen() {
   });
 
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const replayAudioElRef = useRef<HTMLAudioElement | null>(null);
+  const audioCacheRef = useRef<Map<string, string>>(new Map());
   const playedVoiceNotesRef = useRef<Set<string>>(new Set());
   const seenAlertIds = useRef<Set<string>>(new Set());
   const initialLoadedRef = useRef<boolean>(false);
 
-  // Read Venue and Display identity on initial load
+  // Read Venue and Display identity on initial load & restore played voice notes
   useEffect(() => {
     if (typeof window !== "undefined") {
       const searchParams = new URLSearchParams(window.location.search);
@@ -79,12 +84,24 @@ export default function EndScreen() {
 
       localStorage.setItem("hth_venue_code", finalVenue);
       localStorage.setItem("hth_display_id", finalDisplay);
+
+      // Restore previously played voice notes to prevent any repeating
+      try {
+        const stored = sessionStorage.getItem("hth_played_voice_notes");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((id: string) => playedVoiceNotesRef.current.add(id));
+          }
+        }
+      } catch (_) {}
     }
   }, []);
 
-  // Play incoming voice note with auto-cleanup and visualizer activation
+  // Play incoming voice note ONCE with auto-cleanup and visualizer activation
   const playVoiceNote = (note: any) => {
     if (!note || !note.id || !note.audioData) return;
+    // Guaranteed Single Play: If already played on this device, do not auto-play again
     if (playedVoiceNotesRef.current.has(note.id)) return;
 
     // Check venue targeting
@@ -94,6 +111,23 @@ export default function EndScreen() {
     if (!isTargeted) return;
 
     playedVoiceNotesRef.current.add(note.id);
+    try {
+      sessionStorage.setItem(
+        "hth_played_voice_notes",
+        JSON.stringify(Array.from(playedVoiceNotesRef.current))
+      );
+    } catch (_) {}
+
+    // Cache audioData in memory for on-demand replay
+    audioCacheRef.current.set(note.id, note.audioData);
+
+    // Stop any active replay
+    if (replayAudioElRef.current) {
+      replayAudioElRef.current.pause();
+      replayAudioElRef.current.currentTime = 0;
+      setReplayPlayingId(null);
+    }
+
     setActiveVoiceNote(note);
     setVoiceState("SPEAKING");
 
@@ -114,9 +148,66 @@ export default function EndScreen() {
         setTimeout(() => {
           setActiveVoiceNote(null);
           setVoiceState("STANDBY");
-        }, 1200);
+          if (audioElRef.current) {
+            audioElRef.current.pause();
+            audioElRef.current.removeAttribute("src");
+          }
+        }, 1000);
       };
     }
+  };
+
+  // Replay a voice note on-demand from the Voice Message Centre
+  const handleReplayVoiceNote = async (note: VoiceMessageItem) => {
+    try {
+      handleStopVoiceNote();
+
+      let audioSrc: string | undefined = audioCacheRef.current.get(note.id);
+      if (!audioSrc) {
+        // Fetch audio data on-demand from database
+        const res = await fetch(`/api/voice/broadcast?id=${note.id}`);
+        const data = await res.json();
+        if (data?.voiceNote?.audioData && typeof data.voiceNote.audioData === "string") {
+          audioSrc = data.voiceNote.audioData;
+          audioCacheRef.current.set(note.id, data.voiceNote.audioData);
+        }
+      }
+
+      if (!audioSrc) return;
+
+      setReplayPlayingId(note.id);
+      setVoiceState("SPEAKING");
+
+      if (replayAudioElRef.current) {
+        replayAudioElRef.current.src = audioSrc;
+        replayAudioElRef.current.currentTime = 0;
+        replayAudioElRef.current.play().catch((err) => {
+          console.warn("Replay audio error:", err);
+        });
+
+        replayAudioElRef.current.onended = () => {
+          setReplayPlayingId(null);
+          setVoiceState("STANDBY");
+          if (replayAudioElRef.current) {
+            replayAudioElRef.current.removeAttribute("src");
+          }
+        };
+      }
+    } catch (err) {
+      console.error("Replay voice note error:", err);
+      setReplayPlayingId(null);
+      setVoiceState("STANDBY");
+    }
+  };
+
+  // Stop active replay audio
+  const handleStopVoiceNote = () => {
+    if (replayAudioElRef.current) {
+      replayAudioElRef.current.pause();
+      replayAudioElRef.current.removeAttribute("src");
+    }
+    setReplayPlayingId(null);
+    setVoiceState("STANDBY");
   };
 
   // Resilient HTTP Polling & Database Synchronization (Fail-Safe for Vercel Serverless)
@@ -235,11 +326,23 @@ export default function EndScreen() {
           })
           .catch(() => {});
 
-        // 6. Sync Latest Voice Note (HTTP Fallback for Vercel)
+        // 6. Sync Voice Message List for Voice Message Centre
+        fetch(`/api/voice/broadcast?_t=${timestamp}`, fetchOptions)
+          .then((res) => res.json())
+          .then((data) => {
+            if (!isMounted || !data?.voiceNotes || !Array.isArray(data.voiceNotes)) return;
+            setRecentVoiceNotes(data.voiceNotes);
+          })
+          .catch(() => {});
+
+        // 7. Sync Latest Voice Note for Automatic Single-Play
         fetch(`/api/voice/broadcast?latest=true&_t=${timestamp}`, fetchOptions)
           .then((res) => res.json())
           .then((data) => {
             if (!isMounted || !data?.latest) return;
+            if (data.latest.id && data.latest.audioData) {
+              audioCacheRef.current.set(data.latest.id, data.latest.audioData);
+            }
             playVoiceNote(data.latest);
           })
           .catch(() => {});
@@ -383,15 +486,19 @@ export default function EndScreen() {
 
     // 6. Voice Note Broadcast Listener
     const handleVoiceNote = (note: any) => {
+      if (note?.id) {
+        setRecentVoiceNotes((prev) => [note, ...prev.filter((n) => n.id !== note.id)]);
+        if (note.audioData) {
+          audioCacheRef.current.set(note.id, note.audioData);
+        }
+      }
       playVoiceNote(note);
     };
 
     socket.on("VOICE_NOTE_BROADCAST", handleVoiceNote);
-    socket.on("voice-note-broadcast", handleVoiceNote);
 
     return () => {
       socket.off("VOICE_NOTE_BROADCAST", handleVoiceNote);
-      socket.off("voice-note-broadcast", handleVoiceNote);
       socket.off("SERVER_STATE_SYNC", handleStateSync);
       socket.off("connect", registerWithBackend);
       socket.off("disconnect");
@@ -415,27 +522,29 @@ export default function EndScreen() {
       ctx.resume().catch(() => {});
     }
     setAudioUnlocked(true);
-    if (audioElRef.current) {
+    // Only attempt audio element playback if activeVoiceNote is currently active and waiting
+    if (activeVoiceNote && audioElRef.current && audioElRef.current.paused) {
       audioElRef.current.muted = false;
       audioElRef.current.volume = 1.0;
       audioElRef.current.play().catch(() => {});
     }
   };
 
-  // Global user interaction listener to automatically unlock audio on first touch/click
+  // Global user interaction listener to automatically unlock audio on first touch/click (runs only once)
   useEffect(() => {
+    if (audioUnlocked) return;
     const handleGlobalInteraction = () => {
       unlockAudio();
     };
-    window.addEventListener("click", handleGlobalInteraction);
-    window.addEventListener("touchstart", handleGlobalInteraction);
-    window.addEventListener("keydown", handleGlobalInteraction);
+    window.addEventListener("click", handleGlobalInteraction, { once: true });
+    window.addEventListener("touchstart", handleGlobalInteraction, { once: true });
+    window.addEventListener("keydown", handleGlobalInteraction, { once: true });
     return () => {
       window.removeEventListener("click", handleGlobalInteraction);
       window.removeEventListener("touchstart", handleGlobalInteraction);
       window.removeEventListener("keydown", handleGlobalInteraction);
     };
-  }, []);
+  }, [audioUnlocked, activeVoiceNote]);
 
   // Fullscreen toggle for 16:9 Smart Board displays (1080p and 4K)
   const toggleFullscreen = () => {
@@ -468,10 +577,15 @@ export default function EndScreen() {
       {/* Subtle overlay gradient to ensure high legibility of countdown & telemetry */}
       <div className="absolute inset-0 bg-black/30 pointer-events-none z-0" />
 
-      {/* Non-display-none Audio element for bulletproof WebRTC playback across Smart TVs */}
+      {/* Dedicated Audio elements for live broadcast and replay (No autoPlay attribute) */}
       <audio
         ref={audioElRef}
-        autoPlay
+        playsInline
+        preload="auto"
+        className="fixed -top-96 -left-96 opacity-0 pointer-events-none"
+      />
+      <audio
+        ref={replayAudioElRef}
         playsInline
         preload="auto"
         className="fixed -top-96 -left-96 opacity-0 pointer-events-none"
@@ -641,8 +755,20 @@ export default function EndScreen() {
           </div>
         )}
 
-        {/* Persistent Alert Centre Feed (Controlled by Admin Toggles) */}
-        {displayConfig.showAlertCentre && <AlertCentreFeed alerts={recentAlerts} />}
+        {/* Dual Command Feed: Persistent Alert Centre & Voice Message Centre (with Replay) */}
+        <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-start justify-center">
+          {displayConfig.showAlertCentre ? (
+            <AlertCentreFeed alerts={recentAlerts} />
+          ) : (
+            <div className="hidden md:block" />
+          )}
+          <VoiceMessageCentreFeed
+            voiceNotes={recentVoiceNotes}
+            activePlayingId={replayPlayingId}
+            onPlayNote={handleReplayVoiceNote}
+            onStopNote={handleStopVoiceNote}
+          />
+        </div>
       </div>
 
       {/* =========================================================================
