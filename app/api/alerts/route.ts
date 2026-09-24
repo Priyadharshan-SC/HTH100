@@ -45,14 +45,13 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { id, title, message, imageUrl, type, priority, duration, createdBy } = body;
+    const { id, title, message, type, priority, duration, createdBy } = body;
 
     const alert = await prisma.alert.create({
       data: {
         id: id || crypto.randomUUID(),
         title,
         message,
-        imageUrl: imageUrl || null,
         type: type || 'INFO',
         priority: priority || 'NORMAL',
         duration: duration ? parseInt(duration, 10) : 15,

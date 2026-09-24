@@ -13,7 +13,6 @@ export type AlertType = {
   priority: "NORMAL" | "HIGH";
   duration: number; // in seconds (default 15)
   createdAt: string;
-  imageUrl?: string | null;
 };
 
 interface OmnitrixAlertOverlayProps {
@@ -313,7 +312,7 @@ export default function OmnitrixAlertOverlay({
                 animate={{ scale: 1, opacity: 1, filter: "blur(0px)" }}
                 exit={{ scale: 0.8, opacity: 0, filter: "blur(16px)" }}
                 transition={{ duration: 0.35, type: "spring", bounce: 0.25 }}
-                className={`relative max-w-2xl max-h-[88vh] overflow-y-auto w-full rounded-2xl border-2 p-8 md:p-10 shadow-2xl bg-gradient-to-b ${styleConfig.bg} backdrop-blur-2xl text-center ${styleConfig.border}`}
+                className={`relative max-w-2xl w-full rounded-2xl border-2 p-8 md:p-10 shadow-2xl bg-gradient-to-b ${styleConfig.bg} backdrop-blur-2xl text-center overflow-hidden ${styleConfig.border}`}
                 style={{
                   boxShadow: `0 0 45px ${styleConfig.glow}`,
                 }}
@@ -343,17 +342,6 @@ export default function OmnitrixAlertOverlay({
                 <h2 className="text-3xl md:text-5xl font-black uppercase tracking-wider text-white mb-5 relative z-10 drop-shadow-[0_2px_15px_rgba(255,255,255,0.3)]">
                   {currentAlert.title}
                 </h2>
-
-                {/* Optional Alert Photo */}
-                {currentAlert.imageUrl && (
-                  <div className="relative z-10 my-5 max-w-md mx-auto rounded-xl overflow-hidden border border-white/20 shadow-2xl bg-black/60 p-1">
-                    <img
-                      src={currentAlert.imageUrl}
-                      alt={currentAlert.title}
-                      className="max-h-56 sm:max-h-64 w-full object-contain rounded-lg mx-auto"
-                    />
-                  </div>
-                )}
 
                 {/* Alert Message */}
                 <p className="text-xl md:text-2xl font-medium text-gray-100 max-w-xl mx-auto leading-relaxed relative z-10 drop-shadow">

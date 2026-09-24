@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import OmnitrixAlertOverlay, { AlertType } from "@/components/OmnitrixAlertOverlay";
 import { getSocket } from "@/lib/socket";
-import { Bell, Eye, Send, Edit3, Trash2, Search, Filter, AlertTriangle, Image as ImageIcon, Upload, X } from "lucide-react";
+import { Bell, Eye, Send, Edit3, Trash2, Search, Filter, AlertTriangle } from "lucide-react";
 
 export default function AdminAlertsPage() {
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -13,7 +13,6 @@ export default function AdminAlertsPage() {
   // Form State
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
   const [type, setType] = useState<"INFO" | "SUCCESS" | "WARNING" | "URGENT">("INFO");
   const [priority, setPriority] = useState<"NORMAL" | "HIGH">("NORMAL");
   const [duration, setDuration] = useState("15");
@@ -118,7 +117,6 @@ export default function AdminAlertsPage() {
       targetType,
       targetVenues: targetType === "VENUE" ? selectedVenues : "ALL",
       targetDisplay: targetType === "DISPLAY" ? targetDisplay : undefined,
-      imageUrl: imageUrl.trim() || undefined,
       createdAt: new Date().toISOString(),
     };
 
@@ -132,7 +130,6 @@ export default function AdminAlertsPage() {
       if (res.ok) {
         setTitle("");
         setMessage("");
-        setImageUrl("");
         fetchAlerts();
         alert(`Alert broadcasted successfully [Target: ${targetType}]!`);
       }
@@ -155,7 +152,6 @@ export default function AdminAlertsPage() {
       type,
       priority,
       duration: parseInt(duration, 10) || 15,
-      imageUrl: imageUrl.trim() || undefined,
       createdAt: new Date().toISOString(),
     };
     setPreviewAlert(alertData);
@@ -456,88 +452,6 @@ export default function AdminAlertsPage() {
               />
             </div>
 
-            {/* Optional Photo Attachment */}
-            <div className="p-4 rounded-xl bg-black/40 border border-dark-border">
-              <label className="text-xs font-mono font-bold uppercase text-gray-300 mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-neon-green" />
-                  <span>ATTACH PHOTO / POSTER (OPTIONAL)</span>
-                </span>
-                {imageUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setImageUrl("")}
-                    className="text-[11px] text-red-400 hover:text-red-300 font-mono flex items-center gap-1 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" /> Remove Photo
-                  </button>
-                )}
-              </label>
-
-              <div className="flex flex-col sm:flex-row items-center gap-3">
-                <label className="cursor-pointer flex items-center justify-center gap-2 px-4 py-3 bg-dark border border-dashed border-dark-border hover:border-neon-green rounded-xl text-xs font-mono text-gray-300 hover:text-white transition-all w-full sm:w-auto shrink-0 shadow-sm">
-                  <Upload className="w-4 h-4 text-neon-green" />
-                  <span>Choose Photo File</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        if (file.size > 5 * 1024 * 1024) {
-                          alert("Photo file is too large! Please choose an image smaller than 5MB.");
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setImageUrl(reader.result as string);
-                        };
-                        reader.readAsDataURL(file);
-                      }
-                    }}
-                  />
-                </label>
-
-                <span className="text-xs text-gray-500 font-mono">OR</span>
-
-                <input
-                  type="url"
-                  value={imageUrl.startsWith("data:") ? "" : imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="Paste direct image link: https://example.com/banner.jpg"
-                  className="w-full bg-dark border border-dark-border rounded-xl p-3 text-white text-xs font-mono focus:outline-none focus:border-neon-green"
-                />
-              </div>
-
-              {imageUrl && (
-                <div className="mt-4 flex items-center gap-4 p-3 bg-dark/60 rounded-xl border border-neon-green/30">
-                  <div className="relative w-28 h-20 rounded-lg overflow-hidden border border-white/20 bg-black shrink-0">
-                    <img
-                      src={imageUrl}
-                      alt="Alert preview"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-mono font-bold text-neon-green flex items-center gap-1.5">
-                      <span>✓ Photo Attached</span>
-                    </div>
-                    <p className="text-[11px] text-gray-400 font-mono truncate mt-0.5">
-                      {imageUrl.startsWith("data:") ? "Uploaded local image file" : imageUrl}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setImageUrl("")}
-                      className="mt-2 text-xs text-red-400 hover:text-red-300 font-mono underline"
-                    >
-                      Delete attachment
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* Action Buttons */}
             <div className="flex items-center justify-end gap-4 pt-2">
               <button
@@ -644,27 +558,11 @@ export default function AdminAlertsPage() {
                         </span>
                       </td>
                       <td className="py-4 pr-6">
-                        <div className="flex items-start gap-3">
-                          {alert.imageUrl && (
-                            <img
-                              src={alert.imageUrl}
-                              alt={alert.title}
-                              className="w-10 h-10 rounded-lg object-cover border border-white/20 shrink-0"
-                            />
-                          )}
-                          <div>
-                            <div className="font-bold text-white uppercase tracking-wide flex items-center gap-2">
-                              <span>{alert.title}</span>
-                              {alert.imageUrl && (
-                                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-neon-green/10 text-neon-green border border-neon-green/20 font-mono font-normal">
-                                  <ImageIcon className="w-3 h-3" /> Photo
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-gray-300 font-medium line-clamp-1 mt-0.5">
-                              {alert.message}
-                            </div>
-                          </div>
+                        <div className="font-bold text-white uppercase tracking-wide">
+                          {alert.title}
+                        </div>
+                        <div className="text-xs text-gray-300 font-medium line-clamp-1 mt-0.5">
+                          {alert.message}
                         </div>
                       </td>
                       <td className="py-4">
@@ -763,58 +661,6 @@ export default function AdminAlertsPage() {
                       className="w-full bg-dark border border-dark-border rounded-xl p-3 text-white text-sm"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-mono uppercase text-gray-400 block mb-1">
-                    Photo Attachment URL / File
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={editingAlert.imageUrl || ""}
-                      onChange={(e) => setEditingAlert({ ...editingAlert, imageUrl: e.target.value })}
-                      placeholder="Paste image link or upload"
-                      className="w-full bg-dark border border-dark-border rounded-xl p-3 text-white text-xs font-mono"
-                    />
-                    <label className="cursor-pointer px-3 py-3 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs font-mono flex items-center gap-1 shrink-0">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setEditingAlert({ ...editingAlert, imageUrl: reader.result as string });
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-                    {editingAlert.imageUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setEditingAlert({ ...editingAlert, imageUrl: "" })}
-                        className="px-3 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl text-xs font-mono whitespace-nowrap"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                  {editingAlert.imageUrl && (
-                    <div className="mt-2 w-28 h-20 rounded-lg overflow-hidden border border-white/20 bg-black">
-                      <img
-                        src={editingAlert.imageUrl}
-                        alt="Edit preview"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-4">

@@ -10,7 +10,6 @@ export async function POST(req: Request) {
       id,
       title,
       message,
-      imageUrl,
       type,
       priority,
       duration,
@@ -32,7 +31,6 @@ export async function POST(req: Request) {
         id: id || crypto.randomUUID(),
         title,
         message,
-        imageUrl: imageUrl || null,
         type: type || 'INFO',
         priority: priority || 'NORMAL',
         duration: duration ? parseInt(duration, 10) : 15,
@@ -45,7 +43,6 @@ export async function POST(req: Request) {
       update: {
         title,
         message,
-        ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
         type: type || 'INFO',
         priority: priority || 'NORMAL',
         duration: duration ? parseInt(duration, 10) : 15,
