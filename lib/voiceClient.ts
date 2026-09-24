@@ -8,7 +8,6 @@ import {
   RemoteTrackPublication,
   RemoteParticipant,
   Track,
-  ConnectionState,
 } from "livekit-client";
 import { getSocket } from "./socket";
 import { playVoiceStartCue, playVoiceEndCue, routeMediaStreamToAudioContext } from "./soundFX";
@@ -84,11 +83,13 @@ export class SmartBoardVoiceReceiver {
     const socket = getSocket();
 
     // Register display with persistent telemetry
-    socket.emit("register-display", {
-      venueCode: this.venueCode,
-      displayId: this.displayId,
-      displayName: `${this.venueCode} / ${this.displayId}`,
-    });
+    if (socket && socket.connected) {
+      socket.emit("register-display", {
+        venueCode: this.venueCode,
+        displayId: this.displayId,
+        displayName: `${this.venueCode} / ${this.displayId}`,
+      });
+    }
 
     // 1. Socket.IO Voice Lifecycle Listeners
     const handleVoiceStart = async (data: { session: VoiceSessionInfo }) => {
@@ -123,7 +124,7 @@ export class SmartBoardVoiceReceiver {
     socket.on("VOICE_MUTED", () => handleVoiceMute({ isMuted: true }));
     socket.on("VOICE_UNMUTED", () => handleVoiceMute({ isMuted: false }));
 
-    // 2. Resilient Fallback Polling (Every 4s checks database for active voice session)
+    // 2. High-Frequency Resilient Database Polling (Every 2s checks Neon DB for active voice)
     const checkVoiceStatus = async () => {
       try {
         const res = await fetch("/api/voice/status");
@@ -145,7 +146,7 @@ export class SmartBoardVoiceReceiver {
     };
 
     checkVoiceStatus();
-    this.pollInterval = setInterval(checkVoiceStatus, 4000);
+    this.pollInterval = setInterval(checkVoiceStatus, 2000);
   }
 
   private async connectToLiveKit() {
@@ -179,32 +180,36 @@ export class SmartBoardVoiceReceiver {
 
       this.room = room;
 
+      const handleAudioTrack = (track: Track) => {
+        playVoiceStartCue();
+
+        // 1. Attach to HTML5 Audio element
+        if (this.audioEl) {
+          track.attach(this.audioEl);
+          this.audioEl.muted = false;
+          this.audioEl.volume = 1.0;
+          this.audioEl.play().catch(() => {
+            this.onPlaybackBlockedCallback?.();
+          });
+        }
+
+        // 2. Attach to Web Audio API for Jarvis Orb frequency analysis
+        if (track.mediaStreamTrack) {
+          const stream = new MediaStream([track.mediaStreamTrack]);
+          this.remoteStream = stream;
+          routeMediaStreamToAudioContext(stream);
+          this.onTrackCallback?.(stream);
+        }
+
+        this.onStateChangeCallback?.(this.isMuted ? "CONNECTED" : "SPEAKING");
+      };
+
       // When broadcaster's audio track is subscribed
       room.on(
         RoomEvent.TrackSubscribed,
         (track: Track, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
           if (track.kind === Track.Kind.Audio) {
-            playVoiceStartCue();
-
-            // 1. Attach to HTML5 Audio element
-            if (this.audioEl) {
-              track.attach(this.audioEl);
-              this.audioEl.muted = false;
-              this.audioEl.volume = 1.0;
-              this.audioEl.play().catch(() => {
-                this.onPlaybackBlockedCallback?.();
-              });
-            }
-
-            // 2. Attach to Web Audio API for Jarvis Orb frequency analysis
-            if (track.mediaStreamTrack) {
-              const stream = new MediaStream([track.mediaStreamTrack]);
-              this.remoteStream = stream;
-              routeMediaStreamToAudioContext(stream);
-              this.onTrackCallback?.(stream);
-            }
-
-            this.onStateChangeCallback?.(this.isMuted ? "CONNECTED" : "SPEAKING");
+            handleAudioTrack(track);
           }
         }
       );
@@ -235,6 +240,15 @@ export class SmartBoardVoiceReceiver {
 
       // Connect to LiveKit SFU via WebSocket
       await room.connect(data.wsUrl, data.token, { autoSubscribe: true });
+
+      // Immediate track attachment if broadcaster was already streaming
+      room.remoteParticipants.forEach((participant) => {
+        participant.trackPublications.forEach((pub) => {
+          if (pub.track && pub.track.kind === Track.Kind.Audio) {
+            handleAudioTrack(pub.track);
+          }
+        });
+      });
 
       this.isConnectedToLiveKit = true;
       this.isConnecting = false;
@@ -310,23 +324,57 @@ export class AdminVoiceBroadcaster {
     const socket = getSocket();
     this.currentVoiceSessionId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-    // 1. Request Voice Session Lock from Server
-    const lockResponse = await new Promise<{ success: boolean; error?: string; owner?: string }>(
-      (resolve) => {
-        socket.emit(
-          "voice-start-session",
-          {
+    // 1. Request Voice Session Lock via Dual-Channel (Socket.IO with 1.2s timeout + REST DB fallback)
+    let lockAcquired = false;
+    let lockResponse: { success: boolean; error?: string; owner?: string } = { success: false };
+
+    if (socket && socket.connected) {
+      try {
+        lockResponse = await Promise.race([
+          new Promise<{ success: boolean; error?: string; owner?: string }>((resolve) => {
+            socket.emit(
+              "voice-start-session",
+              {
+                adminName,
+                adminId,
+                sessionId: this.currentVoiceSessionId,
+                channel,
+              },
+              (res: { success: boolean; error?: string; owner?: string }) => {
+                resolve(res);
+              }
+            );
+          }),
+          new Promise<{ success: boolean; error?: string }>((_, reject) =>
+            setTimeout(() => reject(new Error("Socket timeout")), 1200)
+          ),
+        ]);
+        lockAcquired = lockResponse.success;
+      } catch {
+        lockAcquired = false;
+      }
+    }
+
+    // Fallback to REST API if Socket.IO is disconnected (e.g. Vercel deployment)
+    if (!lockAcquired) {
+      try {
+        const restRes = await fetch("/api/voice/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "start",
             adminName,
             adminId,
             sessionId: this.currentVoiceSessionId,
             channel,
-          },
-          (res: { success: boolean; error?: string; owner?: string }) => {
-            resolve(res);
-          }
-        );
+          }),
+        });
+        lockResponse = await restRes.json();
+        lockAcquired = lockResponse.success;
+      } catch (err) {
+        lockResponse = { success: false, error: "Failed to connect to voice session backend" };
       }
-    );
+    }
 
     if (!lockResponse.success) {
       return {
@@ -402,7 +450,14 @@ export class AdminVoiceBroadcaster {
       }
     }
     const socket = getSocket();
-    socket.emit("voice-mute-toggle", { isMuted });
+    if (socket && socket.connected) {
+      socket.emit("voice-mute-toggle", { isMuted });
+    }
+    fetch("/api/voice/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mute", isMuted }),
+    }).catch(() => {});
   }
 
   public stopBroadcast() {
@@ -425,7 +480,14 @@ export class AdminVoiceBroadcaster {
     this.currentVoiceSessionId = null;
 
     const socket = getSocket();
-    socket.emit("voice-end-session");
+    if (socket && socket.connected) {
+      socket.emit("voice-end-session");
+    }
+    fetch("/api/voice/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "end" }),
+    }).catch(() => {});
   }
 
   public getLocalStream(): MediaStream | null {
@@ -438,7 +500,6 @@ export class AdminVoiceBroadcaster {
     this.statsInterval = setInterval(async () => {
       if (!this.room) return;
       try {
-        // High quality telemetry
         this.onStatsCallback?.({
           quality: "GOOD",
           rtt: 12,
