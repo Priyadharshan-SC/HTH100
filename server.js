@@ -294,6 +294,16 @@ app.prepare().then(() => {
       }
     });
 
+    // 9. Remote Refresh Command for All User Displays
+    socket.on("admin-trigger-refresh", (data, callback) => {
+      console.log("> Admin triggered remote refresh for all user views");
+      io.emit("REFRESH_USERS_VIEW");
+      io.emit("FORCE_USER_VIEW_RELOAD");
+      if (typeof callback === "function") {
+        callback({ success: true, timestamp: Date.now() });
+      }
+    });
+
     socket.on("disconnect", () => {
       // If active voice admin disconnects, terminate broadcast safely
       if (voiceSession.active && voiceSession.adminSocketId === socket.id) {

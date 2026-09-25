@@ -8,9 +8,10 @@ import OmnitrixAlertOverlay, { AlertType } from "@/components/OmnitrixAlertOverl
 import AlertCentreFeed from "@/components/AlertCentreFeed";
 import VoiceMessageCentreFeed, { VoiceMessageItem } from "@/components/VoiceMessageCentreFeed";
 import JuryPosterShowcase from "@/components/JuryPosterShowcase";
+import FeedbackQrCard from "@/components/FeedbackQrCard";
 import { getSocket } from "@/lib/socket";
 import { getAudioContext } from "@/lib/soundFX";
-import { Radio, Volume2, Tv, Wifi, ShieldAlert, Sparkles } from "lucide-react";
+import { Radio, Volume2, Tv, Wifi, ShieldAlert, Sparkles, RefreshCw } from "lucide-react";
 
 export interface DisplayConfig {
   showCountdown: boolean;
@@ -18,6 +19,7 @@ export interface DisplayConfig {
   showAlertCentre: boolean;
   showLogo: boolean;
   showJury?: boolean;
+  showFeedbackQr?: boolean;
   customAnnouncement?: string;
 }
 
@@ -71,8 +73,53 @@ export default function EndScreen() {
     showAlertCentre: true,
     showLogo: true,
     showJury: true,
+    showFeedbackQr: true,
     customAnnouncement: "",
   });
+
+  // Periodic Safe Auto-Refresh for User View (5 minutes / 300s default)
+  const DEFAULT_REFRESH_INTERVAL = 300;
+  const [refreshCountdown, setRefreshCountdown] = useState<number>(DEFAULT_REFRESH_INTERVAL);
+  const voiceStateRef = useRef(voiceState);
+  voiceStateRef.current = voiceState;
+  const activeVoiceNoteRef = useRef(activeVoiceNote);
+  activeVoiceNoteRef.current = activeVoiceNote;
+  const replayPlayingIdRef = useRef(replayPlayingId);
+  replayPlayingIdRef.current = replayPlayingId;
+
+  // Auto-refresh timer loop
+  useEffect(() => {
+    let intervalSec = DEFAULT_REFRESH_INTERVAL;
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search).get("refresh");
+      if (p && !isNaN(Number(p))) {
+        intervalSec = Math.max(30, Number(p));
+      }
+    }
+    setRefreshCountdown(intervalSec);
+
+    const timer = setInterval(() => {
+      setRefreshCountdown((prev) => {
+        if (prev <= 1) {
+          const isAudioBusy =
+            voiceStateRef.current === "SPEAKING" ||
+            activeVoiceNoteRef.current !== null ||
+            replayPlayingIdRef.current !== null;
+
+          if (isAudioBusy) {
+            return 15; // Defer reload if audio is actively playing
+          }
+
+          console.log("[HTH] Auto-refreshing user view for memory and schedule sync...");
+          window.location.reload();
+          return intervalSec;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const replayAudioElRef = useRef<HTMLAudioElement | null>(null);
@@ -550,7 +597,20 @@ export default function EndScreen() {
 
     socket.on("VOICE_NOTE_BROADCAST", handleVoiceNote);
 
+    // 7. Remote Auto-Refresh Commands from Backend / Admin
+    const handleRemoteReload = () => {
+      console.log("[HTH] Remote reload requested by admin");
+      window.location.reload();
+    };
+
+    socket.on("REFRESH_USERS_VIEW", handleRemoteReload);
+    socket.on("FORCE_USER_VIEW_RELOAD", handleRemoteReload);
+    socket.on("RELOAD_PAGE", handleRemoteReload);
+
     return () => {
+      socket.off("REFRESH_USERS_VIEW", handleRemoteReload);
+      socket.off("FORCE_USER_VIEW_RELOAD", handleRemoteReload);
+      socket.off("RELOAD_PAGE", handleRemoteReload);
       socket.off("VOICE_NOTE_BROADCAST", handleVoiceNote);
       socket.off("SERVER_STATE_SYNC", handleStateSync);
       socket.off("connect", registerWithBackend);
@@ -826,17 +886,19 @@ export default function EndScreen() {
           </div>
 
           {/* Mobile / Tablet Viewport (< xl): Gracefully rendered below feeds */}
-          {displayConfig.showJury !== false && (
-            <div className="xl:hidden w-full max-w-xs mx-auto mt-2">
-              <JuryPosterShowcase />
+          {(displayConfig.showFeedbackQr !== false || displayConfig.showJury !== false) && (
+            <div className="xl:hidden w-full max-w-xs mx-auto mt-4 flex flex-col gap-4">
+              {displayConfig.showFeedbackQr !== false && <FeedbackQrCard />}
+              {displayConfig.showJury !== false && <JuryPosterShowcase />}
             </div>
           )}
         </div>
 
-        {/* Right Side: Vertical Jury Poster Showcase (Docked cleanly on right side for 1080p, 4K & Smart Boards) */}
-        {displayConfig.showJury !== false && (
-          <div className="hidden xl:flex flex-col items-center justify-center shrink-0 w-64 2xl:w-72">
-            <JuryPosterShowcase />
+        {/* Right Side: Feedback QR + Vertical Jury Poster Showcase (Docked cleanly on right side for 1080p, 4K & Smart Boards) */}
+        {(displayConfig.showFeedbackQr !== false || displayConfig.showJury !== false) && (
+          <div className="hidden xl:flex flex-col items-center justify-center shrink-0 w-64 2xl:w-72 gap-4">
+            {displayConfig.showFeedbackQr !== false && <FeedbackQrCard />}
+            {displayConfig.showJury !== false && <JuryPosterShowcase />}
           </div>
         )}
       </div>
@@ -844,12 +906,28 @@ export default function EndScreen() {
       {/* =========================================================================
           4. FOOTER REGION: CONTROLS & SAFE AREA
           ========================================================================= */}
-      <footer className="w-full flex items-center justify-between text-gray-500 text-xs font-mono pt-4 border-t border-white/5 z-10">
+      <footer className="w-full flex flex-wrap items-center justify-between text-gray-500 text-xs font-mono pt-4 border-t border-white/5 z-10 gap-3">
         <div>
           Department of CSE (Artificial Intelligence and Machine Learning)
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Auto-Refresh Telemetry Badge & Manual Trigger */}
+          <button
+            onClick={() => window.location.reload()}
+            className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-neon-cyan/40 text-[11px] text-gray-300 font-mono transition-all cursor-pointer group shadow-sm"
+            title="Click to refresh user view now"
+          >
+            <RefreshCw className="w-3 h-3 text-neon-cyan group-hover:rotate-180 transition-transform duration-500" />
+            <span>
+              AUTO-REFRESH:{" "}
+              <span className="text-neon-cyan font-bold">
+                {Math.floor(refreshCountdown / 60)}:
+                {(refreshCountdown % 60).toString().padStart(2, "0")}
+              </span>
+            </span>
+          </button>
+
           {/* Autoplay Audio Permission Action */}
           {!audioUnlocked && (
             <button

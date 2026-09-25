@@ -48,6 +48,16 @@ export default function AdminLiveMonitorPage() {
   const [filter, setFilter] = useState<"ALL" | "ONLINE" | "OFFLINE">("ALL");
   const [search, setSearch] = useState<string>("");
   const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString());
+  const [refreshingAll, setRefreshingAll] = useState(false);
+
+  const handleRefreshAllUserViews = () => {
+    setRefreshingAll(true);
+    const socket = getSocket();
+    socket.emit("admin-trigger-refresh", {}, () => {
+      setTimeout(() => setRefreshingAll(false), 2000);
+    });
+    setTimeout(() => setRefreshingAll(false), 2000);
+  };
 
   // Fetch initial venues and poll for live status
   useEffect(() => {
@@ -177,6 +187,16 @@ export default function AdminLiveMonitorPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefreshAllUserViews}
+              disabled={refreshingAll}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-neon-cyan/10 hover:bg-neon-cyan/20 border border-neon-cyan/40 text-neon-cyan font-mono text-xs font-bold transition-all cursor-pointer shadow-[0_0_15px_rgba(0,243,255,0.2)] disabled:opacity-50"
+              title="Send instant refresh command to all 13 venue displays"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshingAll ? "animate-spin" : ""}`} />
+              <span>{refreshingAll ? "REFRESHING..." : "REFRESH ALL USER SCREENS"}</span>
+            </button>
+
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 font-mono text-xs">
               <Clock className="w-3.5 h-3.5 text-gray-400" />
               <span className="text-gray-400">LAST SYNC:</span>
